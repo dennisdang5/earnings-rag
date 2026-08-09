@@ -5,4 +5,3 @@
 
 ## 8-8-2026 - Chunk size, overlap, top-k in config
 - Allows eval harness to sweep them programmatically from config file
-- 
