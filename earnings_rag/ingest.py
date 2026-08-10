@@ -6,10 +6,11 @@ def _sec_headers() -> dict[str, str]:
         raise RuntimeError('SEC_USER_AGENT not set - EDGAR will return 403')
     return {'User-Agent': settings.sec_user_agent}
 
-SEC_HEADERS = _sec_headers()
+session = requests.Session()
+session.headers.update(_sec_headers())
+
 def load_ticker_map() -> dict[str, str]:
-    r = requests.get('https://www.sec.gov/files/company_tickers.json',
-                     headers=SEC_HEADERS, timeout=30)
+    r = session.get('https://www.sec.gov/files/company_tickers.json', timeout=30)
     r.raise_for_status()
     data = r.json()
 
@@ -22,5 +23,35 @@ def load_ticker_map() -> dict[str, str]:
 
     return ticker_map
 
-tm = load_ticker_map()
-print(len(tm), tm['NVDA'], tm['AAPL'])
+def get_filings(cik: str, form_type: str = '10-K') -> list[dict]:
+    url = f'https://data.sec.gov/submissions/CIK{cik}.json'
+    r = session.get(url, timeout=30)
+    r.raise_for_status()
+
+    data = r.json()
+    recent = data['filings']['recent']
+
+    accessions = recent['accessionNumber']
+    forms = recent['form']
+    dates = recent['filingDate']
+    docs = recent['primaryDocument']
+
+    results = []
+    for i in range(len(forms)):
+        if forms[i] != form_type:
+            continue
+        results.append(({
+            'accession': accessions[i],
+            'form': forms[i],
+            'date': dates[i],
+            'doc': docs[i]
+        }))
+
+    return results
+
+
+if __name__ == '__main__':
+    tm = load_ticker_map()
+    filings = get_filings(tm['NVDA'], '10-K')
+    for f in filings:
+        print(f['date'], f['accession'], f['doc'])
