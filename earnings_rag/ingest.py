@@ -1,5 +1,7 @@
 import requests
 from earnings_rag.config import settings
+import time
+from pathlib import Path
 
 def _sec_headers() -> dict[str, str]:
     if not settings.sec_user_agent:
@@ -56,9 +58,30 @@ def filing_url(cik: str, accession: str, doc:str) -> str:
     acc_bare = accession.replace('-', '')
     return f'https://www.sec.gov/Archives/edgar/data/{cik_bare}/{acc_bare}/{doc}'
 
-if __name__ == '__main__':
+DATA_RAW = Path('data/raw')
+def download_filing(url: str, dest: Path) -> Path:
+    if dest.exists():
+        return dest
+
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    r = session.get(url, timeout=60)
+    r.raise_for_status()
+    dest.write_bytes(r.content)
+    time.sleep(0.15)
+    return dest
+
+
+TICKERS = ['NVDA', 'AAPL', 'COF']
+
+def ingest_all(n_per_ticker: int = 4) -> None:
     tm = load_ticker_map()
-    cik = tm['NVDA']
-    for f in get_filings(cik, '10-K'):
-        url = filing_url(cik, f['accession'], f['doc'])
-        print(f['report_date'], url)
+    for ticker in TICKERS:
+        cik = tm[ticker]
+        for f in get_filings(cik, '10-K')[:n_per_ticker]:
+            url = filing_url(cik, f['accession'], f['doc'])
+            dest = DATA_RAW / ticker / f"{f['report_date']}.html"
+            download_filing(url, dest)
+            print(f"{ticker} {f['report_date']} -> {dest}")
+
+if __name__ == '__main__':
+    ingest_all()
