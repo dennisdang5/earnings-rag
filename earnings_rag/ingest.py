@@ -35,6 +35,7 @@ def get_filings(cik: str, form_type: str = '10-K') -> list[dict]:
     forms = recent['form']
     dates = recent['filingDate']
     docs = recent['primaryDocument']
+    report_dates = recent['reportDate'] # Fiscal period end
 
     results = []
     for i in range(len(forms)):
@@ -44,14 +45,20 @@ def get_filings(cik: str, form_type: str = '10-K') -> list[dict]:
             'accession': accessions[i],
             'form': forms[i],
             'date': dates[i],
-            'doc': docs[i]
+            'doc': docs[i],
+            'report_date': report_dates[i]
         }))
 
     return results
 
+def filing_url(cik: str, accession: str, doc:str) -> str:
+    cik_bare = cik.lstrip('0')
+    acc_bare = accession.replace('-', '')
+    return f'https://www.sec.gov/Archives/edgar/data/{cik_bare}/{acc_bare}/{doc}'
 
 if __name__ == '__main__':
     tm = load_ticker_map()
-    filings = get_filings(tm['NVDA'], '10-K')
-    for f in filings:
-        print(f['date'], f['accession'], f['doc'])
+    cik = tm['NVDA']
+    for f in get_filings(cik, '10-K'):
+        url = filing_url(cik, f['accession'], f['doc'])
+        print(f['report_date'], url)
