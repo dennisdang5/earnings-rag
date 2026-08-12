@@ -73,11 +73,12 @@ def download_filing(url: str, dest: Path) -> Path:
 
 TICKERS = ['NVDA', 'AAPL', 'COF']
 
-def ingest_all(n_per_ticker: int = 4) -> None:
+def ingest_all() -> None:
     tm = load_ticker_map()
-    for ticker in TICKERS:
+    for ticker in settings.tickers:
         cik = tm[ticker]
-        for f in get_filings(cik, '10-K')[:n_per_ticker]:
+        filings = get_filings(cik, settings.form_type)[:settings.filings_per_ticker]
+        for f in filings:
             url = filing_url(cik, f['accession'], f['doc'])
             dest = DATA_RAW / ticker / f"{f['report_date']}.html"
             download_filing(url, dest)
