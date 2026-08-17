@@ -11,3 +11,15 @@
 
 ## 8-10-2026 - Utilize reportDate and not filingDate
 - Fiscal period is ingested rather than when the company reported due to the fact that companies report on different days
+
+## 8-12-2026 - Tables dropped and kept only prose
+- Embeddings struggle to discriminate between numeric values like "26,974" and "13,507" because they are similar semantically
+- Flattened tables would look like information without being retrievable thus tables were dropped
+- Numeric would belong to text to sql rather than XBRL
+
+# 8-12-2026 - Trimmed to item 1
+- Filings follow the same structure with the table of contents at the front which we removed in order to embedd useful information such as business insight
+- Page headers, numbers, and footers were removed since they repeat throughout and dilute the chunks they land in
+
+# 8-17-2026 Front matter trim with fixed-prefix fallback
+- Fallback cuts a fixed 6000 chars if no heading matches at all for the first item if it doesn't match preset structure

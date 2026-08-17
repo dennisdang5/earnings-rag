@@ -32,7 +32,7 @@ def html_to_text(path: Path) -> str:
 def is_noise(line: str) -> bool:
     if line.lower() in NOISE_LINES:
         return True
-    if re.fullmatch(r'\d{1, 3}', line):
+    if re.fullmatch(r'\d{1,3}', line):
         return True
     if re.fullmatch(r'[_\-—\s]+', line):
         return True
@@ -48,16 +48,15 @@ def normalize(text: str) -> str:
 
     return '\n'.join(lines)
 
-def trim_front_matter(text: str) -> str:
-    m  = re.search(r'^Item 1\. \s*Business', text, re.MULTILINE)
-    if not m:
-        return text
-    return text[m.start():]
+def trim_front_matter(text: str, fallback_chars: int = 6000) -> str:
+    m  = re.search(r'^Item\s*1\.?\s*Business', text, re.MULTILINE | re.IGNORECASE)
+    if m:
+        return text[m.start():]
+    return text[fallback_chars:] # heading is not found then we cut a prefixed which is normally the table of contents
 
 if __name__ == '__main__':
     from earnings_rag.config import settings
-    text = html_to_text(settings.raw_dir / 'NVDA' / '2026-01-25.html')
-    text = normalize(text)
-    text = trim_front_matter(text)
-    print(len(text))
-    print(text[:300])
+    for ticker in settings.tickers:
+        for path in sorted((settings.raw_dir / ticker).glob('*.html')):
+            text = trim_front_matter(normalize(html_to_text(path)))
+            print(f'{ticker} {path.stem}: {len(text):>7,} chars | {text[:60]}')
