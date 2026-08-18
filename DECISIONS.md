@@ -21,5 +21,11 @@
 - Filings follow the same structure with the table of contents at the front which we removed in order to embedd useful information such as business insight
 - Page headers, numbers, and footers were removed since they repeat throughout and dilute the chunks they land in
 
-# 8-17-2026 Front matter trim with fixed-prefix fallback
+# 8-17-2026 - Front matter trim with fixed-prefix fallback
 - Fallback cuts a fixed 6000 chars if no heading matches at all for the first item if it doesn't match preset structure
+
+# 8-18-2026 - Fixed size token chunking (500/50)
+- Chose token based over character based because token counts vary with content density, whereas, character windows give inconsistent embedding input
+
+# 8-18-2026 - JSONL for chunk output
+- line countable

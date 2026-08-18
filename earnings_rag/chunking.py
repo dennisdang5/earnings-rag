@@ -3,6 +3,8 @@ from bs4 import BeautifulSoup, XMLParsedAsHTMLWarning
 import warnings
 import re
 import tiktoken
+import json
+from earnings_rag.config import settings
 
 warnings.filterwarnings('ignore', category=XMLParsedAsHTMLWarning)
 
@@ -73,18 +75,37 @@ def chunk_text(text: str, chunk_size: int, overlap: int) -> list[str]:
 
     return chunks
 
+def chunk_document(path: Path, ticker: str) -> list[dict]:
+    text = trim_front_matter(normalize(html_to_text(path)))
+    pieces = chunk_text(text, settings.chunk_size_tokens, settings.chunk_overlap_tokens)
+
+    records = []
+    for i, piece in enumerate(pieces):
+        records.append({
+            'id': f'{ticker}_{path.stem}_{i:04d}',
+            'ticker': ticker,
+            'period': path.stem,
+            'chunk_index': i,
+            'text': piece
+        })
+
+    return records
+
+def chunk_all() -> None:
+    out_path = settings.data_dir / 'chunks.jsonl'
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+
+    total = 0
+    with out_path.open('w', encoding='utf-8') as f:
+        for ticker in settings.tickers:
+            for path in sorted((settings.raw_dir / ticker).glob('*.html')):
+                records = chunk_document(path, ticker)
+                for r in records:
+                    f.write(json.dumps(r) + '\n')
+                total += len(records)
+                print(f'{ticker} {path.stem}: {len(records)} chunks')
+    print(f'total: {total} -> {out_path}')
+
 if __name__ == '__main__':
     from earnings_rag.config import settings
-    # for ticker in settings.tickers:
-    #     for path in sorted((settings.raw_dir / ticker).glob('*.html')):
-    #         text = trim_front_matter(normalize(html_to_text(path)))
-    #         print(f'{ticker} {path.stem}: {len(text):>7,} chars | {text[:60]}')
-
-    text = trim_front_matter(normalize(html_to_text(settings.raw_dir / 'NVDA' / '2026-01-25.html')))
-    chunks = chunk_text(text, settings.chunk_size_tokens, settings.chunk_overlap_tokens)
-    print(len(chunks))
-    print(chunks[10])
-
-    # tokens = _encoder.encode(text)
-    # stride = settings.chunk_size_tokens - settings.chunk_overlap_tokens
-    # print( len(text), len(tokens), len(text) / len(tokens), stride, len(tokens) / stride)
+    chunk_all()
