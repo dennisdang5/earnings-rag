@@ -29,3 +29,7 @@
 
 # 8-18-2026 - JSONL for chunk output
 - line countable
+
+# 8-19-2026 Hosted embeddings over local sentence transformers
+- Local sentence transformers would add PyTorch to the Docker image which is around 2.5 GB memory required
+- 

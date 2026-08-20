@@ -13,7 +13,8 @@ class Settings(BaseSettings):
     db_password: str = 'postgres'
 
     sec_user_agent: str = ''
-    embedding_api_key: str = ''
+    embedding_api_key: str = 'text-embedding-3-small'
+    embedding_dim: int = 1536
     llm_api_key: str = ''
 
     chunk_size_tokens: int = 500
