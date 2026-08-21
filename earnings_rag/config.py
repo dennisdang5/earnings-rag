@@ -13,9 +13,13 @@ class Settings(BaseSettings):
     db_password: str = 'postgres'
 
     sec_user_agent: str = ''
-    embedding_api_key: str = 'text-embedding-3-small'
-    embedding_dim: int = 1536
+    embedding_api_key: str = ''
     llm_api_key: str = ''
+
+    # Embedding model and dimension must match thus the model determines the dimension
+    embedding_model: str = 'text-embedding-3-small'
+    embedding_dim: int = 1536
+    embedding_batch_size: int = 100
 
     chunk_size_tokens: int = 500
     chunk_overlap_tokens: int = 50

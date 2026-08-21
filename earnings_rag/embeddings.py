@@ -10,5 +10,22 @@ def _client() -> OpenAI:
         _client_instance = OpenAI(api_key=settings.embedding_api_key)
     return _client_instance
 
+def embed_texts(texts: list[str]) -> list[list[float]]:
+    resp = _client().embeddings.create(
+        model=settings.embedding_model,
+        input=texts
+    )
+
+    vectors = []
+    for item in resp.data:
+        vectors.append(item.embedding)
+
+    return vectors
+
+
+if __name__ == '__main__':
+    vecs = embed_texts(['hello world', 'the cat sat on the mat'])
+    print(len(vecs), len(vecs[0]))
+
 
 
