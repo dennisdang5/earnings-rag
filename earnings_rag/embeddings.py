@@ -2,8 +2,6 @@ from openai import OpenAI
 from earnings_rag.config import settings
 import json
 
-from earnings_rag.store import connect
-
 _client_instance = None
 def _client() -> OpenAI:
     global _client_instance
@@ -36,24 +34,6 @@ def embed_batched(texts: list[str]) -> list[list[float]]:
         print(f'embedded {start + len(batch)}/{len(texts)}')
 
     return all_vectors
-
-def upsert_chunks(records: list[dict], vectors: list[list[float]]) -> None:
-    with connect() as conn:
-        with conn.cursor() as cur:
-            for record, vector in zip(records, vectors):
-                cur.execute(
-                    """
-                    INSERT INTO CHUNKS (id, ticker, period, chunk_index, text, embedding)
-                    VALUES (%s, %s, %s, %s, %s, %s)
-                    ON CONFLICT (id) DO UPDATE SET
-                        text = EXCLUDED.text,
-                        embedding = EXCLUDED.embedding
-                    """,
-                    (record['id'], records['ticker'], record['period'],
-                     record['chunk_index'], record['text'], str(vector))
-                )
-        conn.commit()
-
 
 if __name__ == '__main__':
     vecs = embed_texts(['hello world', 'the cat sat on the mat'])

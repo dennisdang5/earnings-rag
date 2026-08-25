@@ -19,6 +19,23 @@ CREATE INDEX IF NOT EXISTS chunks_ticker_period_idx ON chunks (ticker, period);
 def connect() -> psycopg.Connection:
     return psycopg.connect(settings.db_url)
 
+def upsert_chunks(records: list[dict], vectors: list[list[float]]) -> None:
+    with connect() as conn:
+        with conn.cursor() as cur:
+            for record, vector in zip(records, vectors):
+                cur.execute(
+                    """
+                    INSERT INTO CHUNKS (id, ticker, period, chunk_index, text, embedding)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (id) DO UPDATE SET
+                        text = EXCLUDED.text,
+                        embedding = EXCLUDED.embedding
+                    """,
+                    (record['id'], record['ticker'], record['period'],
+                     record['chunk_index'], record['text'], str(vector))
+                )
+        conn.commit()
+
 def init_schema() -> None:
     with connect() as conn:
         conn.execute(SCHEMA_SQL)
