@@ -23,10 +23,11 @@ def build_index(limit: int | None = None) -> None:
     upsert_chunks(records, vectors)
     print(f'indexed {len(records)} chunks')
 
-def ask(question: str, k: int = 5, ticker: str | None = None) -> None:
+def retrieve(question: str, k: int = 5, ticker: str | None = None) -> list[dict]:
     query_vector = embed_texts([question])[0]
-    hits = search(query_vector, k=k, ticker=ticker)
+    return search(query_vector, k=k, ticker=ticker)
 
+def print_hits(hits: list[dict]) -> None:
     for hit in hits:
         print(f'--- {hit['id']} distance={hit['distance']:.4f} ---')
         print(hit['text'][:400])
@@ -35,4 +36,4 @@ def ask(question: str, k: int = 5, ticker: str | None = None) -> None:
 if __name__ == '__main__':
     # init_schema()
     # build_index()
-    ask('What does NVIDIA say about supply constraints?')
+    print_hits(retrieve('What does NVIDIA say about supply constraints?'))
