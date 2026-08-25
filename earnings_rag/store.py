@@ -36,6 +36,44 @@ def upsert_chunks(records: list[dict], vectors: list[list[float]]) -> None:
                 )
         conn.commit()
 
+def search(query_vector: list[float], k: int = 5, ticker: str | None = None) -> list[dict]:
+    vector = str(query_vector)
+
+    if ticker:
+        sql = """
+            SELECT id, ticker, period, text, embedding <=> %s::vector AS distance
+            FROM chunks
+            WHERE ticker = %s
+            ORDER BY embedding <=> %s::vector
+            LIMIT %s
+        """
+        params = (vector, ticker, vector, k)
+    else:
+        sql = """
+            SELECT id, ticker, period, text, embedding <=> %s::vector AS distance
+            FROM chunks
+            ORDER BY embedding <=> %s::vector
+            LIMIT %s
+        """
+        params = (vector, vector, k)
+
+    with connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, params)
+            rows = cur.fetchall()
+
+    results = []
+    for row in rows:
+        results.append({
+            'id': row[0],
+            'ticker': row[1],
+            'period': row[2],
+            'text': row[3],
+            'distance': row[4]
+        })
+
+    return results
+
 def init_schema() -> None:
     with connect() as conn:
         conn.execute(SCHEMA_SQL)

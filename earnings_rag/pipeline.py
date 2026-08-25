@@ -1,7 +1,8 @@
 import json
 from earnings_rag.config import settings
-from earnings_rag.embeddings import embed_batched
-from earnings_rag.store import init_schema, upsert_chunks
+from earnings_rag.embeddings import embed_batched, embed_texts
+from earnings_rag.store import init_schema, upsert_chunks, search
+
 
 def build_index(limit: int | None = None) -> None:
     path = settings.data_dir / 'chunks.jsonl'
@@ -22,6 +23,16 @@ def build_index(limit: int | None = None) -> None:
     upsert_chunks(records, vectors)
     print(f'indexed {len(records)} chunks')
 
+def ask(question: str, k: int = 5, ticker: str | None = None) -> None:
+    query_vector = embed_texts([question])[0]
+    hits = search(query_vector, k=k, ticker=ticker)
+
+    for hit in hits:
+        print(f'--- {hit['id']} distance={hit['distance']:.4f} ---')
+        print(hit['text'][:400])
+        print()
+
 if __name__ == '__main__':
-    init_schema()
-    build_index()
+    # init_schema()
+    # build_index()
+    ask('What does NVIDIA say about supply constraints?')
