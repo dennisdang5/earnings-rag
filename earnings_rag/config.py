@@ -26,6 +26,9 @@ class Settings(BaseSettings):
     chunk_overlap_tokens: int = 50
     top_k: int = 5
 
+    llm_model: str = 'gpt-4o-mini'
+    llm_max_tokens: int = 500
+
     data_dir: Path = REPO_ROOT / 'data'
 
     tickers: list[str] = ['NVDA', 'AAPL', 'COF']
