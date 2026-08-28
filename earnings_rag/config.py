@@ -27,7 +27,7 @@ class Settings(BaseSettings):
     top_k: int = 5
 
     llm_model: str = 'gpt-4o-mini'
-    llm_max_tokens: int = 500
+    llm_max_tokens: int = 500 # Max tokens used for output of LLM
 
     data_dir: Path = REPO_ROOT / 'data'
 

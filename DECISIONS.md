@@ -30,6 +30,23 @@
 # 8-18-2026 - JSONL for chunk output
 - line countable
 
-# 8-19-2026 Hosted embeddings over local sentence transformers
-- Local sentence transformers would add PyTorch to the Docker image which is around 2.5 GB memory required
-- 
+# 8-19-2026 - Hosted embeddings over local sentence transformers
+- Local sentence transformer would add PyTorch to the Docker image which is around 2.5 GB memory required
+
+# 8-25-2026 - Exact brute force search with no vector index
+- ~1,8000 rows scans in milliseconds and is exact
+- HNSW or IVFFlat are approximate and recall would become a function of index tuning
+
+# 8-25-2026 - Corpus split
+- 58% of the corpus is COF, 15% AAPL, 27% NVDA
+- Bank 10-Ks are far longer than tech ones
+- Eval questions must be spread deliberately across tickers
+
+# 8-27-2026 - Temperature=0 for LLM generation
+- Setting temperature=0 allows reproducibility rather than allowing the LLM to have randomness in token selection
+- Model takes the most likely token everytime
+
+# 8-27-2026 - Explicit "filings do not address this" instruction
+- Verified with an out of corpus question
+- Without this rule an LLM will answer from training data or synthesize from marginally related chunks 
+- Failure mode would make the RAG untrustworthy

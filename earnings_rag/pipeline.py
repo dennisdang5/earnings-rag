@@ -2,6 +2,7 @@ import json
 from earnings_rag.config import settings
 from earnings_rag.embeddings import embed_batched, embed_texts
 from earnings_rag.store import init_schema, upsert_chunks, search
+from earnings_rag.llm import generate
 
 
 def build_index(limit: int | None = None) -> None:
@@ -32,6 +33,11 @@ def print_hits(hits: list[dict]) -> None:
         print(f'--- {hit['id']} distance={hit['distance']:.4f} ---')
         print(hit['text'][:400])
         print()
+
+def ask(question: str, k: int = 5, ticker: str | None = None) -> dict:
+    hits = retrieve(question, k=k, ticker=ticker)
+    answer = generate(question, hits)
+    return {'answer': answer, 'sources': hits}
 
 if __name__ == '__main__':
     # init_schema()
