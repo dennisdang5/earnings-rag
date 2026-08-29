@@ -50,3 +50,19 @@
 - Verified with an out of corpus question
 - Without this rule an LLM will answer from training data or synthesize from marginally related chunks 
 - Failure mode would make the RAG untrustworthy
+
+# 8-28-2026 - First eval run: 0.111 recall@5
+- Initial questions listed one expected chunk each
+- But 10-k risk factors are near identical across filing years so retrieval returned a different year's copy of the correct disclosure and socred as a miss
+- Widened expected_chunks ti list every year's versions which was verified by reading each
+- A chunk is valid ground truth if a reader could answer the question from that chunk alone
+- Position of the key phrase doesn't matter it only matters whether the answering substance is present and complete and not truncated mid-disclosure
+
+# 8-28-2026 - Fixed size chunking
+- Fixed size chunking cuts through topic boundaries and results into mixed topic chunks retrieved worse than focused ones
+
+# 8-28-2026 - Genuine retrieval failure
+- Customer default drivers COF_2023-12-31_0041 explicitly lists default drivers (job loss, debt levels, inflation vs wages, unemployment)
+- Retrieval returned credit ratings and credit quality indicator chunks instead
+- The phrase credit is heavily overloaded in a bank 10-K and the tabular quality indicator section dominates the neighborhood
+- 

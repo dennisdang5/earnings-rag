@@ -74,11 +74,56 @@ def search(query_vector: list[float], k: int = 5, ticker: str | None = None) -> 
 
     return results
 
+def sample_chunks(n: int = 1, ticker: str | None = None) -> None:
+    """Print n random chunks from the corpus that can optionally be filtered by ticker
+
+    A read and inspect helper for building out eval harness set. Sample a chunk, read it, then write a question it answers and record
+    its id as ground truth.
+
+    Prints to stdout rather than returning
+    """
+    sql = 'SELECT id, text FROM chunks'
+    params = []
+    if ticker:
+        sql += ' WHERE ticker = %s'
+        params.append(ticker)
+    sql += ' ORDER BY random() LIMIT %s'
+    params.append(n)
+
+    with connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, tuple(params))
+            for row in cur.fetchall():
+                print(f'=== {row[0]} ===')
+                print(row[1][:1200])
+                print()
+
+def show_chunk(chunk_id: str) -> None:
+    """ Print one chunk's full text by id and is used for eval work."""
+    with connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute('SELECT id, text FROM chunks WHERE id = %s', (chunk_id,))
+            row = cur.fetchone()
+    if row is None:
+        print(f'no chunk with id {chunk_id}')
+        return
+
+    print(f'=== {row[0]} ===')
+    print(row[1])
+
 def init_schema() -> None:
     with connect() as conn:
         conn.execute(SCHEMA_SQL)
         conn.commit()
 
 if __name__ == '__main__':
-    init_schema()
-    print('schema ready')
+    # sample_chunks(4, ticker='COF')
+    show_chunk('COF_2022-12-31_0219')
+    print()
+    show_chunk('COF_2023-12-31_0237')
+    print()
+    show_chunk('COF_2024-12-31_0246')
+    print()
+    show_chunk('COF_2025-12-31_0268')
+    print()
+    # show_chunk('COF_2024-12-31_0206')
