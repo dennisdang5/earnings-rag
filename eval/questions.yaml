@@ -1,0 +1,79 @@
+- question: 'How does NVIDIA use AI to improve frame rates in games?'
+  expected_chunks:
+    - NVDA_2023-01-29_0005
+    - NVDA_2024-01-28_0005
+    - NVDA_2025-01-26_0005
+    - NVDA_2026-01-25_0005
+
+- question: 'How does NVIDIA allocate revenue across obligations in a contract?'
+  expected_chunks:
+    - NVDA_2025-01-26_0078
+    - NVDA_2024-01-28_0074
+    - NVDA_2026-01-25_0074
+    - NVDA_2026-01-25_0092
+    - NVDA_2024-01-28_0092
+
+- question: 'What is Capital Ones stress capital buffer requirement?'
+  expected_chunks:
+    - COF_2025-12-31_0011
+
+- question: 'What inputs does capital one use to estimate the fair value of loans held for investments?'
+  expected_chunks:
+    - COF_2022-12-31_0219
+    - COF_2023-12-31_0237
+    - COF_2024-12-31_0246
+    - COF_2025-12-31_0268
+
+- question: 'What are the main reasons customers default on their credit at Capital One?'
+  expected_chunks:
+    - COF_2023-12-31_0041
+
+- question: 'What increases credit losses for customers and how does it affect the business of Capital One?'
+  expected_chunks:
+    - COF_2023-12-31_0041
+
+- question: 'How do high interest rates affect Capital One?'
+  expected_chunks:
+    - COF_2022-12-31_0031
+    - COF_2023-12-31_0039
+    - COF_2024-12-31_0042
+    - COF_2025-12-31_0043
+
+- question: 'How does Capital One account for business acquisitions?'
+  expected_chunks:
+    - COF_2024-12-31_0196
+    - COF_2025-12-31_0212
+    - COF_2023-12-31_0188
+
+- question: 'What contributes to goodwill impairment and how is it calculated at Capital One?'
+  expected_chunks:
+    - COF_2025-12-31_0128
+
+- question: 'How do Apple product defects affect customers?'
+  expected_chunks:
+    - AAPL_2024-09-28_0014
+
+- question: 'How does apple deal with third party applications in the App store?'
+  expected_chunks:
+    - AAPL_2025-09-27_0049
+
+- question: 'What was the gross unrecognized tax benefits in 2021 at Apple?'
+  expected_chunks:
+    - AAPL_2022-09-24_0056
+
+- question: 'What are the limits of Apples foreign currency hedging?'
+  expected_chunks:
+    - AAPL_2023-09-30_0029
+
+- question: 'Why does apple design its own hardware and software together?'
+  expected_chunks:
+    - AAPL_2023-09-30_0002
+
+
+- question: 'What kinds of property does apple lease and how much is it commited to paying?'
+  expected_chunks:
+    - AAPL_2023-09-30_0039
+
+- question:
+  expected_chunks:
+    -
