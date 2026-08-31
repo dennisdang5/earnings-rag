@@ -15,6 +15,8 @@
 
 - question: 'What is Capital Ones stress capital buffer requirement?'
   expected_chunks:
+    - COF_2023-12-31_0009
+    - COF_2024-12-31_0009
     - COF_2025-12-31_0011
 
 - question: 'What inputs does capital one use to estimate the fair value of loans held for investments?'
@@ -47,33 +49,72 @@
 
 - question: 'What contributes to goodwill impairment and how is it calculated at Capital One?'
   expected_chunks:
+    - COF_2023-12-31_0105
+    - COF_2024-12-31_0113
     - COF_2025-12-31_0128
 
 - question: 'How do Apple product defects affect customers?'
   expected_chunks:
     - AAPL_2024-09-28_0014
+    - AAPL_2022-09-24_0014
+    - AAPL_2023-09-30_0014
+    - AAPL_2024-09-28_0013
+    - AAPL_2025-09-27_0014
 
-- question: 'How does apple deal with third party applications in the App store?'
+- question: 'How does apple earn from app store distribution and what threatens that?'
   expected_chunks:
-    - AAPL_2025-09-27_0049
-
-- question: 'What was the gross unrecognized tax benefits in 2021 at Apple?'
-  expected_chunks:
-    - AAPL_2022-09-24_0056
+    - AAPL_2022-09-24_0017
+    - AAPL_2023-09-30_0016
 
 - question: 'What are the limits of Apples foreign currency hedging?'
   expected_chunks:
     - AAPL_2023-09-30_0029
+    - AAPL_2022-09-24_0052
+    - AAPL_2024-09-28_0029
+    - AAPL_2024-09-28_0049
+    - AAPL_2025-09-27_0029
 
 - question: 'Why does apple design its own hardware and software together?'
   expected_chunks:
     - AAPL_2023-09-30_0002
 
-
 - question: 'What kinds of property does apple lease and how much is it commited to paying?'
   expected_chunks:
     - AAPL_2023-09-30_0039
+    - AAPL_2022-09-24_0040
+    - AAPL_2023-09-30_0052
+    - AAPL_2024-09-28_0040
 
-- question:
+- question: 'What risks does NVIDIA sees in acquisitions and strategic investments?'
   expected_chunks:
-    -
+    - NVDA_2026-01-25_0039
+    - NVDA_2025-01-26_0041
+    - NVDA_2023-01-29_0038
+
+- question: 'What is incorporated in Nvidias marketing strategy and their partner network?'
+  expected_chunks:
+    - NVDA_2026-01-25_0009
+    - NVDA_2024-01-28_0009
+    - NVDA_2025-01-26_0009
+
+- question: 'How is Nvidia dealing with third party vulnerabilities?'
+  expected_chunks:
+    - NVDA_2025-01-26_0036
+    - NVDA_2026-01-25_0034
+    - NVDA_2024-01-28_0035
+    - NVDA_2024-01-28_0036
+
+- question: 'What limits Nvidia to be able to sell to China?'
+  expected_chunks:
+    - NVDA_2026-01-25_0014
+    - NVDA_2023-01-29_0045
+    - NVDA_2024-01-28_0051
+    - NVDA_2024-01-28_0052
+    - NVDA_2025-01-26_0055
+    - NVDA_2026-01-25_0053
+
+- question: 'What industries use NVIDIAs accelerated computing and what do they use it for?'
+  expected_chunks:
+    - NVDA_2024-01-28_0002
+    - NVDA_2026-01-25_0002
+    - NVDA_2025-01-26_0002

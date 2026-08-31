@@ -54,15 +54,34 @@
 # 8-28-2026 - First eval run: 0.111 recall@5
 - Initial questions listed one expected chunk each
 - But 10-k risk factors are near identical across filing years so retrieval returned a different year's copy of the correct disclosure and socred as a miss
-- Widened expected_chunks ti list every year's versions which was verified by reading each
+- Widened expected_chunks to list every year's versions which was verified by reading each
 - A chunk is valid ground truth if a reader could answer the question from that chunk alone
 - Position of the key phrase doesn't matter it only matters whether the answering substance is present and complete and not truncated mid-disclosure
 
 # 8-28-2026 - Fixed size chunking
 - Fixed size chunking cuts through topic boundaries and results into mixed topic chunks retrieved worse than focused ones
 
-# 8-28-2026 - Genuine retrieval failure
-- Customer default drivers COF_2023-12-31_0041 explicitly lists default drivers (job loss, debt levels, inflation vs wages, unemployment)
-- Retrieval returned credit ratings and credit quality indicator chunks instead
-- The phrase credit is heavily overloaded in a bank 10-K and the tabular quality indicator section dominates the neighborhood
+# 8-29-2026 - Two kinds of retrieval failure found
+- Miss 1 and Miss 3 — wrong section entirely (customer default question)
+COF_2023-12-31_0041 explicitly lists why customers default: job loss,
+rising debt, inflation outpacing wages, unemployment. Retrieval returned
+credit *ratings* and credit *quality indicator* chunks instead. Cause:
+"credit" means several different things in a bank filing, and the query
+matched the wrong sense.
+- Miss 2 — right section, wrong chunk (fair value question)
+Four chunks (one per year) contain the answer. Retrieval returned the
+chunk immediately before each one, all four times. Cause: consecutive
+chunks in the fair value note use nearly identical vocabulary, so their
+vectors sit almost on top of each other. The one paragraph that holds
+the answer is too small a fraction of a 500-token chunk to move its
+vector much.
+- This suggests Miss 1 points toward metadata filtering by limiting search by section. For miss 2 we should use smaller chunks
+such that smaller token sized chunks can answer the question rather than being averaged away
+- Both kept as misses because these were real limitations
+
+# 8-30-2026 - Eval baseline: recall@5 = 0.842 (16/19)
+- 19 hand written questions with the ground truth verified by reading every chunk
+- Roughly even across NVDA/AAPL/COF despite the corpus being 58% COF
+- NVDA and AAPL questions all pass
+- Questions missed pertain to COF because these filings were 4x longer and contained narrow repeated vocabulary so any bank query has far more near distance competition
 - 
