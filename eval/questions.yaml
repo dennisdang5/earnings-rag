@@ -4,6 +4,8 @@
     - NVDA_2024-01-28_0005
     - NVDA_2025-01-26_0005
     - NVDA_2026-01-25_0005
+  anchors:
+    - "deep learning super sampling"
 
 - question: 'How does NVIDIA allocate revenue across obligations in a contract?'
   expected_chunks:
@@ -12,12 +14,16 @@
     - NVDA_2026-01-25_0074
     - NVDA_2026-01-25_0092
     - NVDA_2024-01-28_0092
+  anchors:
+    - "multiple performance obligations"
 
 - question: 'What is Capital Ones stress capital buffer requirement?'
   expected_chunks:
     - COF_2023-12-31_0009
     - COF_2024-12-31_0009
     - COF_2025-12-31_0011
+  anchors:
+    - "stress capital buffer requirement for the period beginning"
 
 - question: 'What inputs does capital one use to estimate the fair value of loans held for investments?'
   expected_chunks:
@@ -25,14 +31,20 @@
     - COF_2023-12-31_0237
     - COF_2024-12-31_0246
     - COF_2025-12-31_0268
+  anchors:
+    - "non-recoverable rate"
 
 - question: 'What are the main reasons customers default on their credit at Capital One?'
   expected_chunks:
     - COF_2023-12-31_0041
+  anchors:
+    - "job loss, higher debt levels"
 
 - question: 'What increases credit losses for customers and how does it affect the business of Capital One?'
   expected_chunks:
     - COF_2023-12-31_0041
+  anchors:
+    - "Rising credit losses or leading indicators"
 
 - question: 'How do high interest rates affect Capital One?'
   expected_chunks:
@@ -40,18 +52,24 @@
     - COF_2023-12-31_0039
     - COF_2024-12-31_0042
     - COF_2025-12-31_0043
+  anchors:
+    - "sensitive to interest rate movements"
 
 - question: 'How does Capital One account for business acquisitions?'
   expected_chunks:
     - COF_2024-12-31_0196
     - COF_2025-12-31_0212
     - COF_2023-12-31_0188
+  anchors:
+    - "bargain purchase gain is recognized"
 
 - question: 'What contributes to goodwill impairment and how is it calculated at Capital One?'
   expected_chunks:
     - COF_2023-12-31_0105
     - COF_2024-12-31_0113
     - COF_2025-12-31_0128
+  anchors:
+    - "goodwill impairment test annually on October 1"
 
 - question: 'How do Apple product defects affect customers?'
   expected_chunks:
@@ -60,11 +78,16 @@
     - AAPL_2023-09-30_0014
     - AAPL_2024-09-28_0013
     - AAPL_2025-09-27_0014
+  anchors:
+    - "Component defects could make the Company"
+    - "detect and fix all issues and defects"
 
 - question: 'How does apple earn from app store distribution and what threatens that?'
   expected_chunks:
     - AAPL_2022-09-24_0017
     - AAPL_2023-09-30_0016
+  anchors:
+    - "retains a commission from sales of applications"
 
 - question: 'What are the limits of Apples foreign currency hedging?'
   expected_chunks:
@@ -73,10 +96,15 @@
     - AAPL_2024-09-28_0029
     - AAPL_2024-09-28_0049
     - AAPL_2025-09-27_0029
+  anchors:
+    - "hedging activities may not be effective"
+    - "no assurance the hedges will offset more than a portion"
 
 - question: 'Why does apple design its own hardware and software together?'
   expected_chunks:
     - AAPL_2023-09-30_0002
+  anchors:
+    - "designs and develops nearly the entire solution"
 
 - question: 'What kinds of property does apple lease and how much is it commited to paying?'
   expected_chunks:
@@ -84,18 +112,24 @@
     - AAPL_2022-09-24_0040
     - AAPL_2023-09-30_0052
     - AAPL_2024-09-28_0040
+  anchors:
+    - "lease arrangements for certain equipment and facilities"
 
-- question: 'What risks does NVIDIA sees in acquisitions and strategic investments?'
+- question: 'What risks does NVIDIA see in acquisitions and strategic investments?'
   expected_chunks:
     - NVDA_2026-01-25_0039
     - NVDA_2025-01-26_0041
     - NVDA_2023-01-29_0038
+  anchors:
+    - "retain critical talent from the target company"
 
 - question: 'What is incorporated in Nvidias marketing strategy and their partner network?'
   expected_chunks:
     - NVDA_2026-01-25_0009
     - NVDA_2024-01-28_0009
     - NVDA_2025-01-26_0009
+  anchors:
+    - "partner network incorporates global, regional"
 
 - question: 'How is Nvidia dealing with third party vulnerabilities?'
   expected_chunks:
@@ -103,6 +137,9 @@
     - NVDA_2026-01-25_0034
     - NVDA_2024-01-28_0035
     - NVDA_2024-01-28_0036
+  anchors:
+    - "limited insight into the data privacy"
+    - "continuously engineer more secure products"
 
 - question: 'What limits Nvidia to be able to sell to China?'
   expected_chunks:
@@ -112,9 +149,14 @@
     - NVDA_2024-01-28_0052
     - NVDA_2025-01-26_0055
     - NVDA_2026-01-25_0053
+  anchors:
+    - "disproportionate impact on NVIDIA"
+    - "export controls applicable to China"
 
 - question: 'What industries use NVIDIAs accelerated computing and what do they use it for?'
   expected_chunks:
     - NVDA_2024-01-28_0002
     - NVDA_2026-01-25_0002
     - NVDA_2025-01-26_0002
+  anchors:
+    - "computer-aided drug discovery"
