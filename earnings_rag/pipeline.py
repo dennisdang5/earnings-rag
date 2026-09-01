@@ -6,7 +6,7 @@ from earnings_rag.llm import generate
 
 
 def build_index(limit: int | None = None) -> None:
-    path = settings.data_dir / 'chunks.jsonl'
+    path = settings.chunks_path
 
     records = []
     with path.open(encoding='utf-8') as f:
@@ -40,6 +40,6 @@ def ask(question: str, k: int = 5, ticker: str | None = None) -> dict:
     return {'answer': answer, 'sources': hits}
 
 if __name__ == '__main__':
-    # init_schema()
-    # build_index()
-    print_hits(retrieve('What does NVIDIA say about supply constraints?'))
+    init_schema()
+    build_index()
+    # print_hits(retrieve('What does NVIDIA say about supply constraints?'))

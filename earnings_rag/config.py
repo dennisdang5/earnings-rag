@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     embedding_dim: int = 1536
     embedding_batch_size: int = 100
 
-    chunk_size_tokens: int = 500
+    chunk_size_tokens: int = 250
     chunk_overlap_tokens: int = 50
     top_k: int = 5
 
@@ -46,5 +46,9 @@ class Settings(BaseSettings):
             f'@{self.db_host}:{self.db_port}/{self.db_name}'
             f'?connect_timeout={self.db_connect_timeout}'
         )
+
+    @property
+    def chunks_path(self) -> Path:
+        return self.data_dir / f'chunks_{settings.chunk_size_tokens}_{settings.chunk_overlap_tokens}.jsonl'
 
 settings = Settings()

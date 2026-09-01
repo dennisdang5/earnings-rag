@@ -20,20 +20,23 @@ def connect() -> psycopg.Connection:
     return psycopg.connect(settings.db_url)
 
 def upsert_chunks(records: list[dict], vectors: list[list[float]]) -> None:
+    params = []
+    for record, vector in zip(records, vectors):
+        params.append((record['id'], record['ticker'], record['period'],
+                       record['chunk_index'], record['text'], str(vector)))
+
     with connect() as conn:
         with conn.cursor() as cur:
-            for record, vector in zip(records, vectors):
-                cur.execute(
-                    """
-                    INSERT INTO CHUNKS (id, ticker, period, chunk_index, text, embedding)
-                    VALUES (%s, %s, %s, %s, %s, %s)
-                    ON CONFLICT (id) DO UPDATE SET
-                        text = EXCLUDED.text,
-                        embedding = EXCLUDED.embedding
-                    """,
-                    (record['id'], record['ticker'], record['period'],
-                     record['chunk_index'], record['text'], str(vector))
-                )
+            cur.executemany(
+                """
+                INSERT INTO CHUNKS (id, ticker, period, chunk_index, text, embedding)
+                VALUES (%s, %s, %s, %s, %s, %s)
+                ON CONFLICT (id) DO UPDATE SET
+                    text = EXCLUDED.text,
+                    embedding = EXCLUDED.embedding
+                """,
+                params,
+            )
         conn.commit()
 
 def search(query_vector: list[float], k: int = 5, ticker: str | None = None) -> list[dict]:
@@ -117,13 +120,14 @@ def init_schema() -> None:
         conn.commit()
 
 if __name__ == '__main__':
-    # sample_chunks(4, ticker='COF')
-    show_chunk('COF_2022-12-31_0219')
+    # sample_chunks(4, ticker='NVDA')
+
+    show_chunk('AAPL_2024-09-28_0014')
     print()
-    show_chunk('COF_2023-12-31_0237')
+    show_chunk('AAPL_2022-09-24_0014')
     print()
-    show_chunk('COF_2024-12-31_0246')
+    show_chunk('AAPL_2023-09-30_0014')
     print()
-    show_chunk('COF_2025-12-31_0268')
+    show_chunk('AAPL_2024-09-28_0013')
     print()
-    # show_chunk('COF_2024-12-31_0206')
+    show_chunk('AAPL_2025-09-27_0014')

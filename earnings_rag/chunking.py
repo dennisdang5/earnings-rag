@@ -92,7 +92,7 @@ def chunk_document(path: Path, ticker: str) -> list[dict]:
     return records
 
 def chunk_all() -> None:
-    out_path = settings.data_dir / 'chunks.jsonl'
+    out_path = settings.chunks_path
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
     total = 0
