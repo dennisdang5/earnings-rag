@@ -84,4 +84,11 @@ such that smaller token sized chunks can answer the question rather than being a
 - Roughly even across NVDA/AAPL/COF despite the corpus being 58% COF
 - NVDA and AAPL questions all pass
 - Questions missed pertain to COF because these filings were 4x longer and contained narrow repeated vocabulary so any bank query has far more near distance competition
-- 
+
+# 9-1-2026 - Chunk size sweep result: 500 tokens is local optimum
+- Recall @5 0.737 (250 token chunk size), 0.842 (500 token chunk size), 0.787 (750 token chunk size)
+- Anchor matching validated against id matching at 500 with identical results
+- 500 token chunk size is a local peak
+- 250 token chunk size has a thin context per chunk with weak semantic signal, 4,035 competing at similar distances
+- 750 token chunk size has topic dilution such that more unrelated material is averaged into the same vector
+- Keeping it at default 500/50 provided to be the local optimum
