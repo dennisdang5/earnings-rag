@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     embedding_dim: int = 1536
     embedding_batch_size: int = 100
 
-    chunk_size_tokens: int = 250
+    chunk_size_tokens: int = 500
     chunk_overlap_tokens: int = 50
     top_k: int = 5
 

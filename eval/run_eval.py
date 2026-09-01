@@ -1,3 +1,5 @@
+import sys
+
 import yaml
 from pathlib import Path
 from earnings_rag.pipeline import retrieve
@@ -8,26 +10,45 @@ def load_questions(path: Path) -> list[dict]:
     with path.open(encoding='utf-8') as f:
         return yaml.safe_load(f)
 
-def score(questions: list[dict], k: int = 5) -> dict:
+def score(questions: list[dict], k: int = 5, match: str = 'anchor') -> dict:
+    """
+    Compute recall@k over the question set
+    """
     hits = 0
     scored = 0
     misses = []
 
     for q in questions:
         expected = set(q.get('expected_chunks') or [])
-        if not expected:
+        anchors = q.get('anchors') or []
+
+        if not expected and not anchors:
             continue # Refusal questions aren't scored on recall
 
         results = retrieve(q['question'], k=k)
-        retrieved = set()
-        for r in results:
-            retrieved.add(r['id'])
+
+        if match == 'anchor':
+            is_hit = False
+            for r in results:
+                text = r['text'].lower()
+                for anchor in anchors:
+                    if anchor.lower() in text:
+                        is_hit = True
+
+        else:
+            retrieved = set()
+            for r in results:
+                retrieved.add(r['id'])
+            is_hit = bool(expected & retrieved)
 
         scored += 1
-        if expected & retrieved:
+        if is_hit:
             hits += 1
         else:
-            misses.append((q['question'], sorted(expected), sorted(retrieved)))
+            got = []
+            for r in results:
+                got.append(r['id'])
+            misses.append((q['question'], anchors, sorted(got)))
 
     return {'recall_at_k': hits / scored, 'hits': hits, 'scored': scored, 'misses': misses}
 
@@ -87,24 +108,31 @@ def validate_anchors(questions: list[dict]) -> None:
 
                 uncovered = set(expected) - covered
                 if uncovered:
-                    print(f'{q['question'][:60]}')
+                    print(f'{q["question"][:60]}')
                     print(f'    Not matched by any anchor: {sorted(uncovered)}')
 
 if __name__ == '__main__':
+    match_mode = 'anchor'
+    if '--match' in sys.argv:
+        match_mode = sys.argv[sys.argv.index('--match') + 1]
+
     questions = load_questions(REPO_ROOT / 'eval' / 'questions.yaml')
-    missing = validate_questions(questions)
 
-    if missing:
-        print('BAD IDS IN questions.yaml:')
-        for chunk_id in missing:
-            print(f'{chunk_id}')
-        raise SystemExit(1)
+    if match_mode == 'id':
+        missing = validate_questions(questions)
+        if missing:
+            print('BAD IDS IN questions.yaml:')
+            for chunk_id in missing:
+                print(f'{chunk_id}')
+            raise SystemExit(1)
+        validate_anchors(questions)
 
-    validate_anchors(questions)
-    result = score(questions)
+    result = score(questions, match=match_mode)
 
-    print(f'recall@5: {result["recall_at_k"]:.3f} ({result["hits"]}/{result["scored"]})')
-    for question, expected, retrieved in result["misses"]:
+    print(f'\nmatch={match_mode} recall@5: {result['recall_at_k']:.3f} '
+          f'({result['hits']}/{result['scored']})')
+
+    for question, anchors, got in result["misses"]:
         print(f'\nMISS: {question}')
-        print(f'expected: {expected}')
-        print(f'got:{retrieved}')
+        print(f'anchors: {anchors}')
+        print(f'got:{got}')
