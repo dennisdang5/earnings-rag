@@ -103,16 +103,36 @@ def sample_chunks(n: int = 1, ticker: str | None = None) -> None:
 
 def show_chunk(chunk_id: str) -> None:
     """ Print one chunk's full text by id and is used for eval work."""
+    chunk = get_chunk(chunk_id)
+    if chunk is None:
+        print(f'No chunk with id {chunk_id}')
+        return
+    print(f'==={chunk['id']}===')
+    print(chunk['text'])
+
+def get_chunk(chunk_id: str) -> dict | None:
+    """
+    Fetch one chunk by id and returns None if it doesn't exist.
+    This returns data for API callers rather than printing in show chunk.
+    """
     with connect() as conn:
         with conn.cursor() as cur:
-            cur.execute('SELECT id, text FROM chunks WHERE id = %s', (chunk_id,))
+            cur.execute(
+                'SELECT id, ticker, period, chunk_index, text FROM chunks where id = %s',
+                (chunk_id),
+            )
             row = cur.fetchone()
-    if row is None:
-        print(f'no chunk with id {chunk_id}')
-        return
 
-    print(f'=== {row[0]} ===')
-    print(row[1])
+    if row is None:
+        return None
+
+    return {
+        'id': row[0],
+        'ticker': row[1],
+        'period': row[2],
+        'chunk_index': row[3],
+        'text': row[4]
+    }
 
 def init_schema() -> None:
     with connect() as conn:
