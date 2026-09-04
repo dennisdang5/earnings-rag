@@ -119,7 +119,7 @@ def get_chunk(chunk_id: str) -> dict | None:
         with conn.cursor() as cur:
             cur.execute(
                 'SELECT id, ticker, period, chunk_index, text FROM chunks where id = %s',
-                (chunk_id),
+                (chunk_id,),
             )
             row = cur.fetchone()
 
