@@ -56,19 +56,34 @@ def health() -> dict:
 
 @app.post('/ask', response_model=AskResponse)
 def ask_endpoint(req: AskRequest) -> AskResponse:
-    result = run_ask(req.question, k=req.k, ticker=req.ticker)
+    started = time.perf_counter()
+    status = 'ok'
 
-    sources = []
-    for hit in result['sources']:
-        sources.append(Source(
-            id=hit['id'],
-            ticker=hit['ticker'],
-            period=hit['period'],
-            distance=hit['distance'],
-            excerpt=hit['text'][:EXCERPT_CHARS]
-        ))
+    try:
+        result = run_ask(req.question, k=req.k, ticker=req.ticker)
 
-    return AskResponse(answer=result['answer'], sources=sources)
+        sources = []
+        for hit in result['sources']:
+            sources.append(Source(
+                id=hit['id'],
+                ticker=hit['ticker'],
+                period=hit['period'],
+                distance=hit['distance'],
+                excerpt=hit['text'][:EXCERPT_CHARS]
+            ))
+
+        if sources:
+            RETRIEVAL_DISTANCE.observe(sources[0].distance)
+
+        return AskResponse(answer=result['answer'], sources=sources)
+
+    except Exception:
+        status = 'error'
+        raise
+
+    finally:
+        ASK_LATENCY.observe(time.perf_counter() - started)
+        ASK_REQUESTS.labels(status=status).inc()
 
 @app.get('/chunks/{chunk_id}', response_model=Chunk)
 def chunk_endpoint(chunk_id: str) -> Chunk:
