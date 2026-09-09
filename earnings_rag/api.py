@@ -5,6 +5,7 @@ from earnings_rag.pipeline import ask as run_ask
 from earnings_rag.store import get_chunk
 import time
 from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST
+import structlog
 
 class AskRequest(BaseModel):
     question: str = Field(min_length=1, max_length=1000)
@@ -46,6 +47,16 @@ RETRIEVAL_DISTANCE = Histogram(
     'Cosine distance of the top retrieved chunk',
     buckets=(0.2, 0.3, 0.35, 0.4, 0.45, 0.5, 0.6)
 )
+
+structlog.configure(
+    processors=[
+        structlog.processors.add_log_level,
+        structlog.processors.TimeStamper(fmt='iso'),
+        structlog.processors.JSONRenderer()
+    ]
+)
+log = structlog.get_logger()
+
 app = FastAPI(title='Earnings RAG', version='0.1.0')
 
 EXCERPT_CHARS = settings.excerpt_chars
@@ -58,11 +69,11 @@ def health() -> dict:
 def ask_endpoint(req: AskRequest) -> AskResponse:
     started = time.perf_counter()
     status = 'ok'
+    sources = []
 
     try:
         result = run_ask(req.question, k=req.k, ticker=req.ticker)
 
-        sources = []
         for hit in result['sources']:
             sources.append(Source(
                 id=hit['id'],
@@ -82,8 +93,21 @@ def ask_endpoint(req: AskRequest) -> AskResponse:
         raise
 
     finally:
-        ASK_LATENCY.observe(time.perf_counter() - started)
+        elapsed = time.perf_counter() - started
+        ASK_LATENCY.observe(elapsed)
         ASK_REQUESTS.labels(status=status).inc()
+
+        log.info(
+            'ask',
+            question=req.question,
+            k=req.k,
+            ticker=req.ticker,
+            status=status,
+            duration_s=round(elapsed, 3),
+            n_sources=len(sources) if status == 'ok' else 0,
+            top_distance=round(sources[0].distance, 4) if sources else None
+        )
+
 
 @app.get('/chunks/{chunk_id}', response_model=Chunk)
 def chunk_endpoint(chunk_id: str) -> Chunk:
