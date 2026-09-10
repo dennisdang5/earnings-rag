@@ -92,3 +92,19 @@ such that smaller token sized chunks can answer the question rather than being a
 - 250 token chunk size has a thin context per chunk with weak semantic signal, 4,035 competing at similar distances
 - 750 token chunk size has topic dilution such that more unrelated material is averaged into the same vector
 - Keeping it at default 500/50 provided to be the local optimum
+
+# 9-10-2026 - False refusal caused by the escape hatch wording
+- The China export-controls question refused despite retrieving five
+on-point chunks at 0.33-0.37 distance. Isolated by calling the model
+with the same context and a bare prompt — it answered fine. So the
+refusal instruction was the trigger, not retrieval or formatting.
+- Cause: "if the context does not contain the answer" reads strictly. The
+export-control chunks discuss risks in hedged language ("may", "could"),
+and the model apparently judged that insufficient to constitute an
+answer.
+- Fix: reworded to permit partial and hedged answers, reserving refusal
+for context that is genuinely about a different subject. China now
+answers; Tesla still refuses.
+- Debugging note: isolate by narrowing the call path. build_context was
+fine (14,312 chars), PROMPT.format was fine (14,684), generate() still
+refused — so the difference had to be in the prompt text itself.

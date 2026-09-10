@@ -14,12 +14,7 @@ def _llm() -> OpenAI:
 PROMPT = """You are a financial research assistant. Answer the question using ONLY the context below, which comes from SEC 10-k filings.
 
 Rules:
-- If the context does not contain the answer, say "The provided filings do not address this."
-- Cite sources by their [number] inline.
-- Do not use outside knowledge.
-- Every claim must be supported by a specific numbered source. If a claim is not directly stated in the context, omit it.
-- Cite only sources you actually used. Do not cite a source that does not contain the claim.
-- If the context is only tangentially related, say the filings do not clearly address the question.
+- Answer from the context even if it is partial or hedged. Only say "The provided filings do not address this." if the context is genuinely about a different subject.
 
 Context:
 {context}

@@ -9,6 +9,25 @@ services:
       - '5433:5432'
     volumes:
       - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d earnings"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  app:
+    build: .
+    ports:
+      - '8000:8000'
+    environment:
+      DB_HOST: db
+      DB_PORT: 5432
+      EMBEDDING_API_KEY: ${EMBEDDING_API_KEY}
+      LLM_API_KEY: ${LLM_API_KEY}
+      SEC_USER_AGENT: ${SEC_USER_AGENT}
+    depends_on:
+      db:
+        condition: service_healthy
 
 volumes:
   pgdata:
