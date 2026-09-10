@@ -35,7 +35,7 @@ def build_context(hits: list[dict]) -> str:
     """
     blocks = []
     for i, hit in enumerate(hits, start=1):
-        blocks.append(f'[{i}] {hit['ticker']} {hit['period']}\n{hit['text']}')
+        blocks.append(f'[{i}] {hit["ticker"]} {hit["period"]}\n{hit["text"]}')
     return '\n\n'.join(blocks)
 
 def generate(question: str, hits: list[dict]) -> str:

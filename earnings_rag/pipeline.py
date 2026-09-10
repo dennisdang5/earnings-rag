@@ -30,7 +30,7 @@ def retrieve(question: str, k: int = 5, ticker: str | None = None) -> list[dict]
 
 def print_hits(hits: list[dict]) -> None:
     for hit in hits:
-        print(f'--- {hit['id']} distance={hit['distance']:.4f} ---')
+        print(f'--- {hit["id"]} distance={hit["distance"]:.4f} ---')
         print(hit['text'][:400])
         print()
 
@@ -42,4 +42,3 @@ def ask(question: str, k: int = 5, ticker: str | None = None) -> dict:
 if __name__ == '__main__':
     init_schema()
     build_index()
-    # print_hits(retrieve('What does NVIDIA say about supply constraints?'))

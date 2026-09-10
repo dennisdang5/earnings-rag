@@ -107,7 +107,7 @@ def show_chunk(chunk_id: str) -> None:
     if chunk is None:
         print(f'No chunk with id {chunk_id}')
         return
-    print(f'==={chunk['id']}===')
+    print(f'==={chunk["id"]}===')
     print(chunk['text'])
 
 def get_chunk(chunk_id: str) -> dict | None:
@@ -138,16 +138,3 @@ def init_schema() -> None:
     with connect() as conn:
         conn.execute(SCHEMA_SQL)
         conn.commit()
-
-if __name__ == '__main__':
-    # sample_chunks(4, ticker='NVDA')
-
-    show_chunk('AAPL_2024-09-28_0014')
-    print()
-    show_chunk('AAPL_2022-09-24_0014')
-    print()
-    show_chunk('AAPL_2023-09-30_0014')
-    print()
-    show_chunk('AAPL_2024-09-28_0013')
-    print()
-    show_chunk('AAPL_2025-09-27_0014')

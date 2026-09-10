@@ -20,9 +20,9 @@ def main() -> None:
     args = [a for a in sys.argv[1:] if a != "--sources"]
     question = " ".join(args)
     for i, hit in enumerate(result["sources"], start=1):
-        print(f"[{i}] {hit['id']} (distance {hit['distance']:.3f})")
+        print(f"[{i}] {hit["id"]} (distance {hit["distance"]:.3f})")
         if show_sources:
-            print(f" {hit['text'][:2000]}\n")
+            print(f' {hit["text"][:2000]}\n')
 
 if __name__ == '__main__':
     main()
