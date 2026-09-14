@@ -1,14 +1,10 @@
 import sys
-
 import yaml
 from pathlib import Path
 from earnings_rag.pipeline import retrieve
 from earnings_rag.config import REPO_ROOT
 from earnings_rag.store import connect
-
-def load_questions(path: Path) -> list[dict]:
-    with path.open(encoding='utf-8') as f:
-        return yaml.safe_load(f)
+from earnings_rag.questions import load_questions
 
 def score(questions: list[dict], k: int = 5, match: str = 'anchor') -> dict:
     """
