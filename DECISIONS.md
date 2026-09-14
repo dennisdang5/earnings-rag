@@ -108,3 +108,11 @@ answers; Tesla still refuses.
 - Debugging note: isolate by narrowing the call path. build_context was
 fine (14,312 chars), PROMPT.format was fine (14,684), generate() still
 refused — so the difference had to be in the prompt text itself.
+
+# 9-14-2026 - CI fixture corpus: 200 chunks and reproduces full-corpus recall
+- CI can't embed 1,799 chunks per push due to cost, time, and an API key in secrets
+- Instead, a committed fixture of ~200 chunks with precomputed embeddings loaded into postgres at CI start
+- Fixtures includes all 15 chunks that currently outrank ground truth in the three known misses, plus random distractors
+- Results: 0.842 on the fixture which was identical to the full corpus and misses on the same three
+- Goal: catches regressions such that a chunking or prompt change that breaks retrieval
+- Does not detect drift
