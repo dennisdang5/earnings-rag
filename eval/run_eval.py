@@ -129,8 +129,8 @@ if __name__ == '__main__':
 
     result = score(questions, match=match_mode)
 
-    print(f'\nmatch={match_mode} recall@5: {result['recall_at_k']:.3f} '
-          f'({result['hits']}/{result['scored']})')
+    print(f'\nmatch={match_mode} recall@5: {result["recall_at_k"]:.3f} '
+          f'({result["hits"]}/{result["scored"]})')
 
     for question, anchors, got in result["misses"]:
         print(f'\nMISS: {question}')
