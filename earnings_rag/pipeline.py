@@ -24,8 +24,9 @@ def build_index(limit: int | None = None) -> None:
     upsert_chunks(records, vectors)
     print(f'indexed {len(records)} chunks')
 
-def retrieve(question: str, k: int = 5, ticker: str | None = None) -> list[dict]:
-    query_vector = embed_texts([question])[0]
+def retrieve(question: str, k: int = 5, ticker: str | None = None, query_vector: list[float] | None = None) -> list[dict]:
+    if query_vector is None:
+        query_vector = embed_texts([question])[0]
     return search(query_vector, k=k, ticker=ticker)
 
 def print_hits(hits: list[dict]) -> None:

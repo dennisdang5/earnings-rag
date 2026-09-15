@@ -3,8 +3,10 @@ import random
 from earnings_rag.config import REPO_ROOT
 from earnings_rag.store import connect
 from earnings_rag.questions import load_questions
+from earnings_rag.embeddings import embed_texts
 
 FIXTURE_PATH = REPO_ROOT / 'eval' / 'fixture_chunks.jsonl'
+QUERY_PATH = REPO_ROOT / 'eval' / 'fixture_queries.json'
 
 # Chunks that compete with ground truth in the three known misses
 COMPETITORS = [
@@ -58,6 +60,24 @@ def build_fixture() -> None:
 
         print(f'Wrote {len(rows)} chunks to {FIXTURE_PATH}')
 
+
+def build_query_vectors() -> None:
+    from earnings_rag.embeddings import embed_texts
+    questions = load_questions(REPO_ROOT / 'eval' / 'questions.yaml')
+
+    texts = []
+    for q in questions:
+        texts.append(q['question'])
+    vectors = embed_texts(texts)
+
+    mapping = {}
+    for text, vector in zip(texts, vectors):
+        mapping[text] = vector
+
+    with QUERY_PATH.open('w', encoding='utf-8') as f:
+        json.dump(mapping, f)
+
+    print(f'Wrote {len(mapping)} query vectors to {QUERY_PATH}')
 
 if __name__ == '__main__':
     build_fixture()

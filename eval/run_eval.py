@@ -1,15 +1,43 @@
 import sys
-import yaml
-from pathlib import Path
+import json
 from earnings_rag.pipeline import retrieve
 from earnings_rag.config import REPO_ROOT
 from earnings_rag.store import connect
 from earnings_rag.questions import load_questions
 
-def score(questions: list[dict], k: int = 5, match: str = 'anchor') -> dict:
+QUERY_PATH = REPO_ROOT / 'eval' / 'fixture_queries.json'
+
+def load_query_vectors(offline: bool) -> dict:
+    """
+    Load precomputed question embeddings for offline (CI) runs
+    """
+    if not QUERY_PATH.exists():
+        if offline:
+            raise SystemExit('offline mode requires eval/fixture_queries.json')
+        return {}
+    with QUERY_PATH.open(encoding='utf-8') as f:
+        return json.load(f)
+
+def check_anchors_present(questions: list[dict]) -> None:
+    """
+    Fail if any question lacks anchors
+    """
+    bad = []
+    for q in questions:
+        if not (q.get('anchors') or []):
+            bad.append(q['question'])
+
+    if bad:
+        print('QUESTIONS WITH NO ANCHORS:')
+        for question in bad:
+            print(f'    {question}')
+        raise SystemExit(1)
+
+def score(questions: list[dict], k: int = 5, match: str = 'anchor', offline: bool = False) -> dict:
     """
     Compute recall@k over the question set
     """
+    vectors = load_query_vectors(offline)
     hits = 0
     scored = 0
     misses = []
@@ -21,7 +49,11 @@ def score(questions: list[dict], k: int = 5, match: str = 'anchor') -> dict:
         if not expected and not anchors:
             continue # Refusal questions aren't scored on recall
 
-        results = retrieve(q['question'], k=k)
+        vector = vectors.get(q['question'])
+        if offline and vector is None:
+            raise SystemExit(f'No precomputed vector for: {q["question"][:60]}')
+
+        results = retrieve(q['question'], k=k, query_vector=vector)
 
         if match == 'anchor':
             is_hit = False
