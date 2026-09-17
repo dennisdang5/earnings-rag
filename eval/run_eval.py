@@ -38,6 +38,7 @@ def score(questions: list[dict], k: int = 5, match: str = 'anchor', offline: boo
     Compute recall@k over the question set
     """
     vectors = load_query_vectors(offline)
+
     hits = 0
     scored = 0
     misses = []
@@ -76,9 +77,13 @@ def score(questions: list[dict], k: int = 5, match: str = 'anchor', offline: boo
             got = []
             for r in results:
                 got.append(r['id'])
-            misses.append((q['question'], anchors, sorted(got)))
+            misses.append((q['question'], anchors, got))
 
-    return {'recall_at_k': hits / scored, 'hits': hits, 'scored': scored, 'misses': misses}
+    return {'recall_at_k': hits / scored,
+            'hits': hits,
+            'scored': scored,
+            'misses': misses
+    }
 
 def validate_questions(questions: list[dict]) -> list[str]:
     """
@@ -139,12 +144,22 @@ def validate_anchors(questions: list[dict]) -> None:
                     print(f'{q["question"][:60]}')
                     print(f'    Not matched by any anchor: {sorted(uncovered)}')
 
-if __name__ == '__main__':
+
+def main() -> None:
     match_mode = 'anchor'
     if '--match' in sys.argv:
         match_mode = sys.argv[sys.argv.index('--match') + 1]
 
+    offline = '--offline' in sys.argv
+
+    threshold = None
+    if '--min-recall' in sys.argv:
+        threshold = float(sys.argv[sys.argv.index('--min-recall') + 1])
+
     questions = load_questions(REPO_ROOT / 'eval' / 'questions.yaml')
+
+    if match_mode == 'anchor':
+        check_anchors_present(questions)
 
     if match_mode == 'id':
         missing = validate_questions(questions)
@@ -155,12 +170,20 @@ if __name__ == '__main__':
             raise SystemExit(1)
         validate_anchors(questions)
 
-    result = score(questions, match=match_mode)
+    result = score(questions, match=match_mode, offline=offline)
 
-    print(f'\nmatch={match_mode} recall@5: {result["recall_at_k"]:.3f} '
+    print(f'\nmatch={match_mode} offline={offline} '
+          f'recall@5: {result["recall_at_k"]:.3f} '
           f'({result["hits"]}/{result["scored"]})')
 
-    for question, anchors, got in result["misses"]:
+    for question, anchors, got in result['misses']:
         print(f'\nMISS: {question}')
-        print(f'anchors: {anchors}')
-        print(f'got:{got}')
+        print(f'  anchors: {anchors}')
+        print(f'  got:     {got}')
+
+    if threshold is not None and result['recall_at_k'] < threshold:
+        print(f'\nFAIL: recall {result["recall_at_k"]:.3f} below threshold {threshold}')
+        raise SystemExit(1)
+
+if __name__ == '__main__':
+    main()

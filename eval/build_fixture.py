@@ -79,5 +79,9 @@ def build_query_vectors() -> None:
 
     print(f'Wrote {len(mapping)} query vectors to {QUERY_PATH}')
 
-if __name__ == '__main__':
+def main() -> None:
     build_fixture()
+    build_query_vectors()
+
+if __name__ == '__main__':
+    main()
