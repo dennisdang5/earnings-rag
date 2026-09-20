@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     db_user: str = 'postgres'
     db_password: str = 'postgres'
     db_connect_timeout: int = 5
+    db_sslmode: str = 'prefer'
 
     sec_user_agent: str = ''
     embedding_api_key: str = ''
@@ -47,6 +48,7 @@ class Settings(BaseSettings):
             f'postgresql://{self.db_user}:{self.db_password}'
             f'@{self.db_host}:{self.db_port}/{self.db_name}'
             f'?connect_timeout={self.db_connect_timeout}'
+            f'&sslmode={self.db_sslmode}'
         )
 
     @property
