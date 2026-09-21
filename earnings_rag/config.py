@@ -12,7 +12,7 @@ class Settings(BaseSettings):
     db_user: str = 'postgres'
     db_password: str = 'postgres'
     db_connect_timeout: int = 5
-    db_sslmode: str = 'require'
+    db_sslmode: str = 'disable'
 
     sec_user_agent: str = ''
     embedding_api_key: str = ''
