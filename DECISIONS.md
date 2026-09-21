@@ -116,3 +116,7 @@ refused — so the difference had to be in the prompt text itself.
 - Results: 0.842 on the fixture which was identical to the full corpus and misses on the same three
 - Goal: catches regressions such that a chunking or prompt change that breaks retrieval
 - Does not detect drift
+
+# 9-21-2026 - Refusal precision check
+- Added a generation stage metric alongside recall@5
+- Recall only measures retrieval and it can't see a model that receives the right chunk and refuses anyway

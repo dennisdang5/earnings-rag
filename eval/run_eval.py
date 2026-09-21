@@ -1,11 +1,12 @@
 import sys
 import json
-from earnings_rag.pipeline import retrieve
+from earnings_rag.pipeline import retrieve, ask
 from earnings_rag.config import REPO_ROOT
 from earnings_rag.store import connect
 from earnings_rag.questions import load_questions
 
 QUERY_PATH = REPO_ROOT / 'eval' / 'fixture_queries.json'
+REFUSAL = 'The provided filings do not address this.'
 
 def load_query_vectors(offline: bool) -> dict:
     """
@@ -44,6 +45,9 @@ def score(questions: list[dict], k: int = 5, match: str = 'anchor', offline: boo
     misses = []
 
     for q in questions:
+        if q.get('expected_refusal'):
+            continue # refusal questions have no correct chunk
+
         expected = set(q.get('expected_chunks') or [])
         anchors = q.get('anchors') or []
 
@@ -85,6 +89,52 @@ def score(questions: list[dict], k: int = 5, match: str = 'anchor', offline: boo
             'misses': misses
     }
 
+def score_refusals(questions: list[dict]) -> dict:
+    """
+    Check generation answers when it should and refuses when it should.
+    """
+    false_refusals = []      # right chunk retrieved model refused anyway
+    missed_refusals = []     # out of corpus model answered anyway
+    retrieval_refusals = []  # wrong chunks retrieved model refused (correct)
+    checked = 0
+
+    for q in questions:
+        expect = bool(q.get('expect_refusal'))
+        anchors = q.get('anchors') or []
+
+        if not expect and not anchors:
+            continue
+
+        checked += 1
+        print(f'  [{checked}] {q["question"][:70]}')
+
+        result = ask(q['question'])
+        answer = result['answer']
+        refused = REFUSAL.lower() in answer.lower()
+
+        retrieved_ok = False
+        for source in result['sources']:
+            text = source['text'].lower()
+            for anchor in anchors:
+                if anchor.lower() in text:
+                    retrieved_ok = True
+
+        if expect:
+            if not refused:
+                missed_refusals.append((q['question'], answer[:200]))
+        elif refused:
+            if retrieved_ok:
+                false_refusals.append(q['question'])
+            else:
+                retrieval_refusals.append(q['question'])
+
+    return {
+        'checked': checked,
+        'false_refusals': false_refusals,
+        'missed_refusals': missed_refusals,
+        'retrieval_refusals': retrieval_refusals,
+    }
+
 def validate_questions(questions: list[dict]) -> list[str]:
     """
     Return any expected_chunks ids that don't exist in the database.
@@ -115,6 +165,9 @@ def validate_anchors(questions: list[dict]) -> None:
     with connect() as conn:
         with conn.cursor() as cur:
             for q in questions:
+                if q.get('expected_refusal'):
+                    continue
+
                 expected = q.get('expected_chunks') or []
                 anchors = q.get('anchors') or []
 
@@ -145,7 +198,41 @@ def validate_anchors(questions: list[dict]) -> None:
                     print(f'    Not matched by any anchor: {sorted(uncovered)}')
 
 
+def run_refusal_check(questions: list[dict]) -> None:
+    print('Checking generation (one LLM call per question)...\n')
+    result = score_refusals(questions)
+
+    n_false = len(result['false_refusals'])
+    n_missed = len(result['missed_refusals'])
+
+    print(f'\nchecked {result["checked"]} questions')
+    print(f'false refusals:  {n_false}   (answerable, but the model refused)')
+    print(f'missed refusals: {n_missed}   (out of corpus, but the model answered)')
+
+    n_retrieval = len(result['retrieval_refusals'])
+    print(f'retrieval refusals: {n_retrieval}   (wrong chunks retrieved; refusal was correct)')
+
+    for question in result['false_refusals']:
+        print(f'\nFALSE REFUSAL: {question}')
+
+    for question, answer in result['missed_refusals']:
+        print(f'\nMISSED REFUSAL: {question}')
+        print(f'  answered: {answer}')
+
+    for question in result['retrieval_refusals']:
+        print(f'\nRETRIEVAL REFUSAL: {question}')
+
+    if n_false or n_missed:
+        raise SystemExit(1)
+
+
 def main() -> None:
+    questions = load_questions(REPO_ROOT / 'eval' / 'questions.yaml')
+
+    if '--refusals' in sys.argv:
+        run_refusal_check(questions)
+        return
+
     match_mode = 'anchor'
     if '--match' in sys.argv:
         match_mode = sys.argv[sys.argv.index('--match') + 1]
@@ -156,8 +243,6 @@ def main() -> None:
     if '--min-recall' in sys.argv:
         threshold = float(sys.argv[sys.argv.index('--min-recall') + 1])
 
-    questions = load_questions(REPO_ROOT / 'eval' / 'questions.yaml')
-
     if match_mode == 'anchor':
         check_anchors_present(questions)
 
@@ -166,7 +251,7 @@ def main() -> None:
         if missing:
             print('BAD IDS IN questions.yaml:')
             for chunk_id in missing:
-                print(f'{chunk_id}')
+                print(f'  {chunk_id}')
             raise SystemExit(1)
         validate_anchors(questions)
 
@@ -184,6 +269,7 @@ def main() -> None:
     if threshold is not None and result['recall_at_k'] < threshold:
         print(f'\nFAIL: recall {result["recall_at_k"]:.3f} below threshold {threshold}')
         raise SystemExit(1)
+
 
 if __name__ == '__main__':
     main()

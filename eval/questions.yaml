@@ -100,7 +100,7 @@
     - "hedging activities may not be effective"
     - "no assurance the hedges will offset more than a portion"
 
-- question: 'Why does apple design its own hardware and software together?'
+- question: 'How does Apple describe its approach to designing hardware and software?'
   expected_chunks:
     - AAPL_2023-09-30_0002
   anchors:
@@ -153,6 +153,18 @@
     - "disproportionate impact on NVIDIA"
     - "export controls applicable to China"
 
+- question: 'What limits Nvidia from selling to China?'
+  expected_chunks:
+    - NVDA_2026-01-25_0014
+    - NVDA_2023-01-29_0045
+    - NVDA_2024-01-28_0051
+    - NVDA_2024-01-28_0052
+    - NVDA_2025-01-26_0055
+    - NVDA_2026-01-25_0053
+  anchors:
+    - "disproportionate impact on NVIDIA"
+    - "export controls applicable to China"
+
 - question: 'What industries use NVIDIAs accelerated computing and what do they use it for?'
   expected_chunks:
     - NVDA_2024-01-28_0002
@@ -160,3 +172,12 @@
     - NVDA_2025-01-26_0002
   anchors:
     - "computer-aided drug discovery"
+
+- question: 'What is Tesla battery strategy?'
+  expect_refusal: true
+
+- question: 'How does Microsoft recognize Azure revenue?'
+  expect_refusal: true
+
+- question: 'What are Amazon Web Services operating margins?'
+  expect_refusal: true
