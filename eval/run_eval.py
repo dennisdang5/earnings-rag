@@ -25,6 +25,8 @@ def check_anchors_present(questions: list[dict]) -> None:
     """
     bad = []
     for q in questions:
+        if q.get('expect_refusal'):
+            continue
         if not (q.get('anchors') or []):
             bad.append(q['question'])
 
@@ -45,7 +47,7 @@ def score(questions: list[dict], k: int = 5, match: str = 'anchor', offline: boo
     misses = []
 
     for q in questions:
-        if q.get('expected_refusal'):
+        if q.get('expect_refusal'):
             continue # refusal questions have no correct chunk
 
         expected = set(q.get('expected_chunks') or [])
@@ -165,7 +167,7 @@ def validate_anchors(questions: list[dict]) -> None:
     with connect() as conn:
         with conn.cursor() as cur:
             for q in questions:
-                if q.get('expected_refusal'):
+                if q.get('expect_refusal'):
                     continue
 
                 expected = q.get('expected_chunks') or []
