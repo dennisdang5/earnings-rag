@@ -36,7 +36,7 @@ def check_anchors_present(questions: list[dict]) -> None:
             print(f'    {question}')
         raise SystemExit(1)
 
-def score(questions: list[dict], k: int = 5, match: str = 'anchor', offline: bool = False) -> dict:
+def score(questions: list[dict], k: int = 5, match: str = 'anchor', offline: bool = False, route: bool = True) -> dict:
     """
     Compute recall@k over the question set
     """
@@ -60,7 +60,7 @@ def score(questions: list[dict], k: int = 5, match: str = 'anchor', offline: boo
         if offline and vector is None:
             raise SystemExit(f'No precomputed vector for: {q["question"][:60]}')
 
-        results = retrieve(q['question'], k=k, query_vector=vector)
+        results = retrieve(q['question'], k=k, query_vector=vector, route=route)
 
         if match == 'anchor':
             is_hit = False
@@ -241,6 +241,8 @@ def main() -> None:
 
     offline = '--offline' in sys.argv
 
+    route = '--no-route' not in sys.argv
+
     threshold = None
     if '--min-recall' in sys.argv:
         threshold = float(sys.argv[sys.argv.index('--min-recall') + 1])
@@ -257,9 +259,9 @@ def main() -> None:
             raise SystemExit(1)
         validate_anchors(questions)
 
-    result = score(questions, match=match_mode, offline=offline)
+    result = score(questions, match=match_mode, offline=offline, route=route)
 
-    print(f'\nmatch={match_mode} offline={offline} '
+    print(f'\nmatch={match_mode} offline={offline} route={route} '
           f'recall@5: {result["recall_at_k"]:.3f} '
           f'({result["hits"]}/{result["scored"]})')
 
