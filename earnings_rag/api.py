@@ -1,5 +1,5 @@
 from fastapi import FastAPI, HTTPException, Response
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, FileResponse
 from pydantic import BaseModel, Field
 from earnings_rag.config import settings
 from earnings_rag.pipeline import ask as run_ask, retrieve
@@ -9,6 +9,7 @@ import time
 import json
 from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST
 import structlog
+from pathlib import Path
 
 class AskRequest(BaseModel):
     question: str = Field(min_length=1, max_length=1000)
@@ -66,6 +67,7 @@ def sse(event: str, data) -> str:
 app = FastAPI(title='Earnings RAG', version='0.1.0')
 
 EXCERPT_CHARS = settings.excerpt_chars
+STATIC_DIR = Path(__file__).parent / 'static'
 
 @app.get('/health')
 def health() -> dict:
@@ -169,3 +171,7 @@ def ask_stream(req: AskRequest) -> StreamingResponse:
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+@app.get('/', include_in_schema=False)
+def index() -> FileResponse:
+    return FileResponse(STATIC_DIR / 'index.html')
