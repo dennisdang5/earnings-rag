@@ -44,3 +44,23 @@ def generate(question: str, hits: list[dict]) -> str:
     )
 
     return response.choices[0].message.content # API can return multiple completions per request and we just take first index
+
+def generate_stream(question: str, hits: list[dict]):
+    """
+    Yields the answer text in pieces as the model writes it for front end purposes
+    """
+    prompt = PROMPT.format(context=build_context(hits), question=question)
+
+    stream = _llm().chat.completions.create(
+        model=settings.llm_model,
+        max_tokens=settings.llm_max_tokens,
+        temperature=0,
+        messages=[{
+            'role': 'user',
+            'content': prompt,
+        }],
+        stream=True,
+    )
+    for chunk in stream:
+        if chunk.choices and chunk.choices[0].delta.content:
+            yield chunk.choices[0].delta.content

@@ -1,9 +1,12 @@
 from fastapi import FastAPI, HTTPException, Response
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from earnings_rag.config import settings
-from earnings_rag.pipeline import ask as run_ask
+from earnings_rag.pipeline import ask as run_ask, retrieve
 from earnings_rag.store import get_chunk
+from earnings_rag.llm import generate_stream
 import time
+import json
 from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST
 import structlog
 
@@ -56,6 +59,9 @@ structlog.configure(
     ]
 )
 log = structlog.get_logger()
+
+def sse(event: str, data) -> str:
+    return f'event: {event}\ndata: {json.dumps(data)}\n\n'
 
 app = FastAPI(title='Earnings RAG', version='0.1.0')
 
@@ -120,3 +126,46 @@ def chunk_endpoint(chunk_id: str) -> Chunk:
 def metrics() -> Response:
     return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
+@app.post('/ask/stream')
+def ask_stream(req: AskRequest) -> StreamingResponse:
+    def events():
+        started = time.perf_counter()
+        status = "ok"
+        hits = []
+        try:
+            yield sse("status", {"stage": "searching"})
+            hits = retrieve(req.question, k=req.k, ticker=req.ticker)
+            if hits:
+                RETRIEVAL_DISTANCE.observe(hits[0]["distance"])
+
+            yield sse("sources", [
+                {"id": h["id"],
+                 "ticker": h["ticker"],
+                 "period": h["period"],
+                 "distance": h["distance"],
+                 "excerpt": h["text"][:EXCERPT_CHARS]}
+                for h in hits
+            ])
+
+            yield sse("status", {"stage": "writing"})
+            for piece in generate_stream(req.question, hits):
+                yield sse("token", {"text": piece})
+
+            yield sse("done", {})
+        except Exception:
+            status = "error"
+            log.exception("ask_stream_failed", question=req.question)
+            yield sse("error", {"message": "Couldn't finish the answer. Try again in a moment."})
+        finally:
+            elapsed = time.perf_counter() - started
+            ASK_LATENCY.observe(elapsed)
+            ASK_REQUESTS.labels(status=status).inc()
+            log.info("ask_stream", question=req.question, status=status,
+                     duration_s=round(elapsed, 3), n_sources=len(hits),
+                     top_distance=round(hits[0]["distance"], 4) if hits else None)
+
+    return StreamingResponse(
+        events(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
