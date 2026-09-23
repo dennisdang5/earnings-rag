@@ -1,6 +1,6 @@
 from fastapi import FastAPI, HTTPException, Response
 from fastapi.responses import StreamingResponse, FileResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from earnings_rag.config import settings
 from earnings_rag.pipeline import ask as run_ask, retrieve
 from earnings_rag.store import get_chunk
@@ -15,6 +15,10 @@ class AskRequest(BaseModel):
     question: str = Field(min_length=1, max_length=1000)
     k: int = Field(default=5, ge=1, le=20)
     ticker: str | None = None
+    @field_validator('ticker')
+    @classmethod
+    def blank_to_none(cls, v):
+        return v or None
 
 class Source(BaseModel):
     id: str

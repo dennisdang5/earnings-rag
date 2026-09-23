@@ -120,3 +120,9 @@ refused — so the difference had to be in the prompt text itself.
 # 9-21-2026 - Refusal precision check
 - Added a generation stage metric alongside recall@5
 - Recall only measures retrieval and it can't see a model that receives the right chunk and refuses anyway
+
+# 9-22-2026 - Generation refusal is sensitive to exact question wording
+- "What limits NVIDIA from selling to China?" refused 8/10
+- Changing "NVIDIA" to "Nvidia" or "China" to "china" resulted in a 0/10 refusal
+- Generation fragility such that the refusal decision sits near a boundary and perhaps a token level difference in the question tip it
+- 
