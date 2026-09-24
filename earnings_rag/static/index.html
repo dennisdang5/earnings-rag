@@ -35,15 +35,6 @@
     letter-spacing: -0.02em; margin: 0 0 12px;
   }
   .lede { color: var(--muted); margin: 0; font-size: 1.02rem; }
-  .byline {
-    position: fixed; right: 16px; bottom: 12px;
-    text-align: right; font-size: 0.75rem; line-height: 1.4; color: var(--muted);
-  }
-  .byline .author { display: block; font-weight: 500; }
-  .byline .dedication { display: block; font: italic 0.8rem var(--serif); }
-  @media (max-width: 600px) {
-    .byline { position: static; text-align: center; padding: 0 16px 20px; }
-  }
 
   .ask { max-width: 760px; margin: 0 auto; }
   .field {
@@ -124,7 +115,7 @@
   .sources { margin-top: 24px; }
 
   .passage { border-left: 3px solid var(--rule); padding: 2px 0 2px 16px; margin-bottom: 26px; }
-  .passage.lit { border-left-color: var(--highlight); }
+  .passage.lit { border-left-color: var(--highlight); cursor: pointer; }
   .meta {
     display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center;
     font-size: 0.82rem; color: var(--muted); margin-bottom: 8px;
@@ -140,7 +131,7 @@
     -webkit-box-decoration-break: clone; box-decoration-break: clone;
     transition: background-size 0.9s ease-out;
   }
-  .lit .hl { background-size: 100% 100%; }
+  .passage.swept .hl { background-size: 100% 100%; }
   .more {
     margin-top: 8px; border: 0; background: none; color: var(--blue);
     font: 500 0.85rem var(--sans); padding: 0; cursor: pointer;
@@ -156,6 +147,16 @@
   .preview.show { opacity: 1; transform: none; }
   .preview .quote { font-size: 0.92rem; }
 
+  .byline {
+    position: fixed; right: 16px; bottom: 12px;
+    text-align: right; font-size: 0.75rem; line-height: 1.4; color: var(--muted);
+  }
+  .byline .author { display: block; font-weight: 500; }
+  .byline .dedication { display: block; font: italic 0.8rem var(--serif); }
+  @media (max-width: 600px) {
+    .byline { position: static; text-align: center; padding: 0 16px 20px; }
+  }
+
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { transition: none !important; animation: none !important; }
   }
@@ -166,10 +167,6 @@
   <header>
     <h1>Ask the filings</h1>
     <p class="lede">Answers come only from NVIDIA, Apple, and Capital One annual reports (10-K, fiscal 2022–2026). Every claim links to the passage it came from.</p>
-    <footer class="byline">
-      <span class="author">By Dennis Dang</span>
-      <span class="dedication">for Mom and Dad</span>
-    </footer>
   </header>
 
   <form class="ask" id="form">
@@ -199,6 +196,12 @@
     </div>
   </section>
 </div>
+
+<footer class="byline">
+  <span class="author">By Dennis Dang</span>
+  <span class="dedication">for Mom and Dad</span>
+</footer>
+
 <div class="preview" id="preview" role="tooltip"></div>
 
 <script>
@@ -220,6 +223,7 @@ const sourcesToggle = $("sources-toggle"), sourcesPanel = $("sources");
 
 let sources = [];
 let text = "";
+let sweepTimer = null;
 
 for (const ex of EXAMPLES) {
   const b = document.createElement("button");
@@ -255,6 +259,7 @@ form.addEventListener("submit", async (e) => {
 
   sources = [];
   text = "";
+  clearHighlight();
   answerEl.replaceChildren();
   answerEl.classList.remove("refused");
   passagesEl.replaceChildren();
@@ -442,14 +447,31 @@ function renderPassages() {
   });
 }
 
+function clearHighlight() {
+  clearTimeout(sweepTimer);
+  document.querySelectorAll(".passage.lit, .passage.swept")
+    .forEach((p) => p.classList.remove("lit", "swept"));
+}
+
 function highlight(n) {
   const el = $("p-" + n);
   if (!el) return;
+
+  // Clicking the citation that's already active turns it off
+  if (el.classList.contains("lit")) {
+    clearHighlight();
+    return;
+  }
+
+  clearHighlight();
   if (sourcesPanel.hidden) setSourcesOpen(true);
-  document.querySelectorAll(".passage.lit").forEach((p) => p.classList.remove("lit"));
   el.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "center" });
-  void el.offsetWidth; // restart the sweep if the same passage is clicked twice
-  el.classList.add("lit");
+
+  void el.offsetWidth; // let the sweep restart cleanly
+  el.classList.add("lit", "swept");
+
+  // Fade the text highlight so the passage is readable; the border stays
+  sweepTimer = setTimeout(() => el.classList.remove("swept"), 2200);
 }
 
 function showPreview(btn) {
@@ -487,5 +509,15 @@ answerEl.addEventListener("focusin", (e) => {
   if (b) showPreview(b);
 });
 answerEl.addEventListener("focusout", hidePreview);
+
+passagesEl.addEventListener("click", (e) => {
+  if (e.target.closest(".more")) return; // expanding shouldn't clear it
+  if (e.target.closest(".passage.lit")) clearHighlight();
+});
+
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") clearHighlight();
+});
 </script>
 </body>
+</html>
