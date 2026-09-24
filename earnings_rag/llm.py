@@ -25,10 +25,6 @@ Question: {question}
 
 Answer:"""
 
-REWRITE_PROMPT = """Rewrite this question using the vocabulary a company's SEC 10-K filing would use to discuss the topic. Keep any company names. Do not add facts or answer the question. Reply with the rewritten question only.
-
-Question: {question}"""
-
 def build_context(hits: list[dict]) -> str:
     """
     :param hits: Data returned from retrieve() such that it a list of dictionary that contain id, timestamp, ticker, text, and distance from our query
@@ -70,19 +66,3 @@ def generate_stream(question: str, hits: list[dict]):
     for chunk in stream:
         if chunk.choices and chunk.choices[0].delta.content:
             yield chunk.choices[0].delta.content
-
-def rewrite_query(question: str) -> str:
-    """
-    Restate a question in the vocabulary a 10-K would use. Used only to steer retrieval.
-    Generation still receives the user's original question since that's what the answer has to respond to.
-    """
-    resp = _llm().chat.completions.create(
-        model=settings.llm_model,
-        max_tokens=80,
-        temperature=0,
-        messages=[{"role": "user",
-                   "content": REWRITE_PROMPT.format(question=question),
-        }],
-    )
-
-    return resp.choices[0].message.content.strip()

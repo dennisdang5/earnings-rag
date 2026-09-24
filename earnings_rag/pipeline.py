@@ -44,10 +44,14 @@ def build_index(limit: int | None = None) -> None:
     upsert_chunks(records, vectors)
     print(f'indexed {len(records)} chunks')
 
-def retrieve(question: str, k: int = 5, ticker: str | None = None, query_vector: list[float] | None = None, route: bool = True) -> list[dict]:
+def retrieve(question: str, k: int = 5, ticker: str | None = None, query_vector: list[float] | None = None, route: bool = True,) -> list[dict]:
     """
     Find the k nearest chunks such that an explicit ticker wins. Otherwise, a single named company in the question limits the search
     to that company.
+
+    route: if the question names exactly one company, search only that company's chunks. An explicit ticker always wins.
+    if ticker is None and route:
+        ticker = detect_ticker(question)
     """
     if ticker is None and route:
         ticker = detect_ticker(question)
