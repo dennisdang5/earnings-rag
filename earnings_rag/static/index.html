@@ -1,0 +1,491 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ask the filings</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;700&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --paper: #F4F6F8; --sheet: #FFFFFF; --ink: #15212C; --muted: #566573;
+    --rule: #D5DCE3; --blue: #1D4F91; --blue-soft: #E3ECF7;
+    --highlight: #F2E35B; --error: #B03A2E;
+    --sans: "Public Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+    --serif: "Source Serif 4", Georgia, "Times New Roman", serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper: #121820; --sheet: #1A222C; --ink: #E6ECF1; --muted: #95A3B1;
+      --rule: #2B3642; --blue: #8DB6EE; --blue-soft: #1F2F45;
+      --highlight: rgba(242, 227, 91, 0.38); --error: #F08A7E;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--paper); color: var(--ink);
+    font: 16px/1.55 var(--sans); -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 56px 24px 96px; }
+
+  header { max-width: 640px; margin: 0 auto 28px; text-align: center; }
+  h1 {
+    font-size: clamp(2rem, 4vw, 2.75rem); line-height: 1.1; font-weight: 700;
+    letter-spacing: -0.02em; margin: 0 0 12px;
+  }
+  .lede { color: var(--muted); margin: 0; font-size: 1.02rem; }
+  .byline {
+    position: fixed; right: 16px; bottom: 12px;
+    text-align: right; font-size: 0.75rem; line-height: 1.4; color: var(--muted);
+  }
+  .byline .author { display: block; font-weight: 500; }
+  .byline .dedication { display: block; font: italic 0.8rem var(--serif); }
+  @media (max-width: 600px) {
+    .byline { position: static; text-align: center; padding: 0 16px 20px; }
+  }
+
+  .ask { max-width: 760px; margin: 0 auto; }
+  .field {
+    display: flex; gap: 10px; align-items: flex-end;
+    background: var(--sheet); border: 1px solid var(--rule); border-radius: 12px;
+    padding: 10px 10px 10px 16px;
+  }
+  .field:focus-within { border-color: var(--blue); box-shadow: 0 0 0 3px var(--blue-soft); }
+  textarea {
+    flex: 1; border: 0; outline: 0; resize: none; background: transparent;
+    color: var(--ink); font: inherit; font-size: 1.05rem;
+    min-height: 28px; max-height: 200px; padding: 6px 0;
+  }
+  select {
+    border: 1px solid var(--rule); border-radius: 8px; background: var(--sheet);
+    color: var(--ink); font: inherit; font-size: 0.9rem; padding: 8px 10px;
+  }
+  .btn {
+    border: 0; border-radius: 8px; background: var(--ink); color: var(--sheet);
+    font: 600 0.95rem var(--sans); padding: 10px 18px; cursor: pointer;
+  }
+  .btn:disabled { opacity: 0.5; cursor: wait; }
+  :focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+  @media (max-width: 600px) {
+    .field { flex-wrap: wrap; }
+    textarea { flex-basis: 100%; }
+  }
+
+  .examples-label {
+    margin: 18px 0 8px; text-align: center;
+    font-size: 0.85rem; color: var(--muted);
+  }
+  .examples {
+    display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px;
+    margin-top: 0; font-size: 0.88rem;
+  }
+  .example {
+    border: 1px solid var(--rule); background: transparent; color: var(--ink);
+    border-radius: 10px; padding: 8px 14px; font: inherit; cursor: pointer;
+    text-align: left; line-height: 1.4;
+  }
+  .example:hover { border-color: var(--blue); color: var(--blue); }
+  .example:last-child:nth-child(odd) { grid-column: 1 / -1; justify-self: center; }
+  @media (max-width: 600px) {
+    .examples { grid-template-columns: 1fr; }
+  }
+
+  .progress {
+    min-height: 24px; margin: 28px 0 8px; color: var(--muted);
+    font-size: 0.9rem; text-align: center;
+  }
+  .progress.error { color: var(--error); }
+
+  .result { max-width: 760px; margin: 0 auto; }
+
+  .answer { font-size: 1.08rem; line-height: 1.7; white-space: pre-wrap; }
+  .answer.refused { color: var(--muted); }
+  .note { margin-top: 14px; font-size: 0.92rem; color: var(--muted); }
+
+  .cite {
+    font: 600 0.72em var(--sans); color: var(--blue); background: var(--blue-soft);
+    border: 0; border-radius: 4px; padding: 1px 5px; margin: 0 1px;
+    vertical-align: 0.25em; cursor: pointer;
+  }
+  .cite:hover { background: var(--highlight); color: var(--ink); }
+  .caret {
+    display: inline-block; width: 0.5ch; height: 1.1em; vertical-align: -0.15em;
+    background: var(--ink); margin-left: 2px; animation: blink 1s steps(1) infinite;
+  }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  .sources-toggle {
+    display: block; margin: 24px auto 0;
+    border: 1px solid var(--rule); background: var(--sheet); color: var(--ink);
+    border-radius: 999px; padding: 8px 18px; font: 500 0.9rem var(--sans); cursor: pointer;
+  }
+  .sources-toggle:hover { border-color: var(--blue); color: var(--blue); }
+  .sources { margin-top: 24px; }
+
+  .passage { border-left: 3px solid var(--rule); padding: 2px 0 2px 16px; margin-bottom: 26px; }
+  .passage.lit { border-left-color: var(--highlight); }
+  .meta {
+    display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center;
+    font-size: 0.82rem; color: var(--muted); margin-bottom: 8px;
+  }
+  .ref, .tick { font-weight: 700; color: var(--ink); }
+  .match { display: inline-flex; align-items: center; gap: 6px; }
+  .bar { width: 48px; height: 5px; border-radius: 3px; background: var(--rule); overflow: hidden; }
+  .bar i { display: block; height: 100%; background: var(--blue); }
+  .quote { font: 1rem/1.65 var(--serif); margin: 0; }
+  .hl {
+    background-image: linear-gradient(transparent 58%, var(--highlight) 58%);
+    background-repeat: no-repeat; background-size: 0% 100%;
+    -webkit-box-decoration-break: clone; box-decoration-break: clone;
+    transition: background-size 0.9s ease-out;
+  }
+  .lit .hl { background-size: 100% 100%; }
+  .more {
+    margin-top: 8px; border: 0; background: none; color: var(--blue);
+    font: 500 0.85rem var(--sans); padding: 0; cursor: pointer;
+  }
+
+  .preview {
+    position: absolute; z-index: 10; max-width: 340px;
+    background: var(--sheet); border: 1px solid var(--rule); border-radius: 10px;
+    padding: 12px 14px; box-shadow: 0 8px 24px rgba(21, 33, 44, 0.14);
+    font-size: 0.88rem; pointer-events: none;
+    opacity: 0; transform: translateY(4px); transition: opacity 0.12s, transform 0.12s;
+  }
+  .preview.show { opacity: 1; transform: none; }
+  .preview .quote { font-size: 0.92rem; }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { transition: none !important; animation: none !important; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Ask the filings</h1>
+    <p class="lede">Answers come only from NVIDIA, Apple, and Capital One annual reports (10-K, fiscal 2022–2026). Every claim links to the passage it came from.</p>
+    <footer class="byline">
+      <span class="author">By Dennis Dang</span>
+      <span class="dedication">for Mom and Dad</span>
+    </footer>
+  </header>
+
+  <form class="ask" id="form">
+    <div class="field">
+      <textarea id="q" rows="1" placeholder="Ask about risks, strategy, or accounting…" aria-label="Your question" required></textarea>
+      <select id="ticker" aria-label="Company">
+        <option value="">All companies</option>
+        <option value="NVDA">NVIDIA</option>
+        <option value="AAPL">Apple</option>
+        <option value="COF">Capital One</option>
+      </select>
+      <button class="btn" id="go" type="submit">Ask</button>
+    </div>
+    <p class="examples-label">Or try one of these</p>
+    <div class="examples" id="examples"></div>
+  </form>
+
+  <p class="progress" id="progress" aria-live="polite"></p>
+
+  <section class="result" id="result" hidden>
+    <div class="answer" id="answer"></div>
+    <p class="note" id="note" hidden></p>
+    <button type="button" class="sources-toggle" id="sources-toggle"
+            aria-expanded="false" aria-controls="sources">Show sources</button>
+    <div class="sources" id="sources" hidden>
+      <div id="passages"></div>
+    </div>
+  </section>
+</div>
+<div class="preview" id="preview" role="tooltip"></div>
+
+<script>
+const REFUSAL = "The provided filings do not address this.";
+const EXAMPLES = [
+  "What limits NVIDIA from selling to China?",
+  "How does Apple earn from the App Store, and what threatens it?",
+  "What is Capital One's stress capital buffer requirement?",
+  "What risks does NVIDIA see in acquisitions and strategic investments?",
+  "How do high interest rates affect Capital One?",
+];
+const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+const $ = (id) => document.getElementById(id);
+const form = $("form"), q = $("q"), go = $("go"), progress = $("progress");
+const result = $("result"), answerEl = $("answer"), note = $("note");
+const passagesEl = $("passages"), preview = $("preview");
+const sourcesToggle = $("sources-toggle"), sourcesPanel = $("sources");
+
+let sources = [];
+let text = "";
+
+for (const ex of EXAMPLES) {
+  const b = document.createElement("button");
+  b.type = "button";
+  b.className = "example";
+  b.textContent = ex;
+  b.onclick = () => { q.value = ex; autosize(); form.requestSubmit(); };
+  $("examples").append(b);
+}
+
+function autosize() {
+  q.style.height = "auto";
+  q.style.height = q.scrollHeight + "px";
+}
+q.addEventListener("input", autosize);
+q.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); form.requestSubmit(); }
+});
+
+function setSourcesOpen(open) {
+  sourcesPanel.hidden = !open;
+  sourcesToggle.setAttribute("aria-expanded", String(open));
+  sourcesToggle.textContent = open
+    ? "Hide sources"
+    : `Show ${sources.length} source${sources.length === 1 ? "" : "s"}`;
+}
+sourcesToggle.addEventListener("click", () => setSourcesOpen(sourcesPanel.hidden));
+
+form.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const question = q.value.trim();
+  if (!question) return;
+
+  sources = [];
+  text = "";
+  answerEl.replaceChildren();
+  answerEl.classList.remove("refused");
+  passagesEl.replaceChildren();
+  setSourcesOpen(false);
+  note.hidden = true;
+  result.hidden = true;
+  go.disabled = true;
+  progress.className = "progress";
+  progress.textContent = "Searching the filings…";
+
+  try {
+    await stream(question, $("ticker").value || null);
+  } catch (err) {
+    progress.className = "progress error";
+    progress.textContent = err.message;
+  } finally {
+    go.disabled = false;
+  }
+});
+
+async function stream(question, ticker) {
+  const res = await fetch("/ask/stream", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ question, k: 5, ticker }),
+  });
+  if (!res.ok || !res.body) {
+    throw new Error(`Couldn't get an answer (error ${res.status}). Try again in a moment.`);
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+
+    let end;
+    while ((end = buffer.indexOf("\n\n")) !== -1) {
+      const raw = buffer.slice(0, end);
+      buffer = buffer.slice(end + 2);
+      handle(parseEvent(raw));
+    }
+  }
+}
+
+function parseEvent(raw) {
+  let event = "message";
+  let data = "";
+  for (const line of raw.split("\n")) {
+    if (line.startsWith("event:")) event = line.slice(6).trim();
+    else if (line.startsWith("data:")) data += line.slice(5).trim();
+  }
+  return { event, data: data ? JSON.parse(data) : null };
+}
+
+function handle({ event, data }) {
+  if (event === "sources") {
+    sources = data;
+    renderPassages();
+    setSourcesOpen(false);
+    result.hidden = false;
+    progress.textContent = `Reading ${data.length} passages…`;
+  } else if (event === "status" && data.stage === "writing") {
+    progress.textContent = "Writing the answer…";
+  } else if (event === "token") {
+    text += data.text;
+    renderAnswer(true);
+  } else if (event === "done") {
+    renderAnswer(false);
+    finish();
+  } else if (event === "error") {
+    throw new Error(data.message);
+  }
+}
+
+function finish() {
+  progress.textContent = "";
+  if (text.includes(REFUSAL)) {
+    answerEl.classList.add("refused");
+    note.textContent = "Nothing in these filings covers that question. Try asking about NVIDIA, Apple, or Capital One.";
+    note.hidden = false;
+  }
+}
+
+// Build answer nodes from text; [n] markers become citation buttons. Never innerHTML.
+function renderAnswer(streaming) {
+  const frag = document.createDocumentFragment();
+  for (const part of text.split(/(\[\d+\])/)) {
+    const m = part.match(/^\[(\d+)\]$/);
+    const n = m ? Number(m[1]) : 0;
+    const s = sources[n - 1];
+    if (m && s) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "cite";
+      b.dataset.n = n;
+      b.textContent = n;
+      b.setAttribute("aria-label", `Source ${n}, ${s.ticker} fiscal year ended ${s.period}`);
+      frag.append(b);
+    } else {
+      frag.append(document.createTextNode(part));
+    }
+  }
+  if (streaming) {
+    const caret = document.createElement("span");
+    caret.className = "caret";
+    caret.setAttribute("aria-hidden", "true");
+    frag.append(caret);
+  }
+  answerEl.replaceChildren(frag);
+}
+
+function matchLabel(d) {
+  if (d < 0.35) return "Close match";
+  if (d < 0.45) return "Partial match";
+  return "Weak match";
+}
+
+function metaRow(s, n) {
+  const row = document.createElement("div");
+  row.className = "meta";
+
+  const ref = document.createElement("span");
+  ref.className = "ref";
+  ref.textContent = `[${n}]`;
+
+  const tick = document.createElement("span");
+  tick.className = "tick";
+  tick.textContent = s.ticker;
+
+  const period = document.createElement("span");
+  period.textContent = `Fiscal year ended ${s.period}`;
+
+  const match = document.createElement("span");
+  match.className = "match";
+  match.title = `Cosine distance ${s.distance.toFixed(3)}`;
+  const bar = document.createElement("span");
+  bar.className = "bar";
+  const fill = document.createElement("i");
+  const strength = Math.min(1, Math.max(0.05, (0.6 - s.distance) / 0.4));
+  fill.style.width = (strength * 100).toFixed(0) + "%";
+  bar.append(fill);
+  match.append(bar, matchLabel(s.distance));
+
+  row.append(ref, tick, period, match);
+  return row;
+}
+
+function renderPassages() {
+  sources.forEach((s, i) => {
+    const n = i + 1;
+    const article = document.createElement("article");
+    article.className = "passage";
+    article.id = "p-" + n;
+
+    const quote = document.createElement("p");
+    quote.className = "quote";
+    const hl = document.createElement("span");
+    hl.className = "hl";
+    hl.textContent = s.excerpt.trim() + "…";
+    quote.append(hl);
+
+    const more = document.createElement("button");
+    more.type = "button";
+    more.className = "more";
+    more.textContent = "Show full passage";
+    let full = null;
+    let expanded = false;
+    more.onclick = async () => {
+      if (full === null) {
+        more.textContent = "Loading…";
+        const res = await fetch("/chunks/" + encodeURIComponent(s.id));
+        full = res.ok ? (await res.json()).text.trim() : "This passage couldn't be loaded.";
+      }
+      expanded = !expanded;
+      hl.textContent = expanded ? full : s.excerpt.trim() + "…";
+      more.textContent = expanded ? "Show less" : "Show full passage";
+    };
+
+    article.append(metaRow(s, n), quote, more);
+    passagesEl.append(article);
+  });
+}
+
+function highlight(n) {
+  const el = $("p-" + n);
+  if (!el) return;
+  if (sourcesPanel.hidden) setSourcesOpen(true);
+  document.querySelectorAll(".passage.lit").forEach((p) => p.classList.remove("lit"));
+  el.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "center" });
+  void el.offsetWidth; // restart the sweep if the same passage is clicked twice
+  el.classList.add("lit");
+}
+
+function showPreview(btn) {
+  const n = Number(btn.dataset.n);
+  const s = sources[n - 1];
+  if (!s) return;
+
+  const quote = document.createElement("p");
+  quote.className = "quote";
+  quote.textContent = s.excerpt.slice(0, 240).trim() + "…";
+  preview.replaceChildren(metaRow(s, n), quote);
+
+  const r = btn.getBoundingClientRect();
+  const maxLeft = window.scrollX + document.documentElement.clientWidth - 356;
+  preview.style.left = Math.max(8, Math.min(window.scrollX + r.left, maxLeft)) + "px";
+  preview.style.top = window.scrollY + r.bottom + 8 + "px";
+  preview.classList.add("show");
+}
+
+function hidePreview() { preview.classList.remove("show"); }
+
+answerEl.addEventListener("click", (e) => {
+  const b = e.target.closest(".cite");
+  if (b) highlight(Number(b.dataset.n));
+});
+answerEl.addEventListener("mouseover", (e) => {
+  const b = e.target.closest(".cite");
+  if (b) showPreview(b);
+});
+answerEl.addEventListener("mouseout", (e) => {
+  if (e.target.closest(".cite")) hidePreview();
+});
+answerEl.addEventListener("focusin", (e) => {
+  const b = e.target.closest(".cite");
+  if (b) showPreview(b);
+});
+answerEl.addEventListener("focusout", hidePreview);
+</script>
+</body>
