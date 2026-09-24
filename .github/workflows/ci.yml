@@ -15,7 +15,7 @@ jobs:
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: earnings
+          POSTGRES_DB: earnings_ci
         ports:
           - 5432:5432
         options: --health-cmd pg_isready --health-interval 5s --health-timeout 3s --health-retries 10
@@ -25,7 +25,8 @@ jobs:
       DB_PORT: 5432
       DB_USER: postgres
       DB_PASSWORD: postgres
-      DB_NAME: earnings
+      DB_NAME: earnings_ci
+      DB_SSLMODE: disable
 
     steps:
       - uses: actions/checkout@v4
