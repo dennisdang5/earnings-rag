@@ -254,5 +254,3 @@ DECISIONS.md               every design decision and finding, with reasoning
 ```
 
 ---
-
-By Dennis Dang
