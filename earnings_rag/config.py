@@ -36,6 +36,8 @@ class Settings(BaseSettings):
     filings_per_ticker: int = 4
     form_type: str = '10-K'
 
+    agent_max_steps: int = 6 # Max model calls before the agent is forced to answer
+
     excerpt_chars: int = 400
 
     @property
