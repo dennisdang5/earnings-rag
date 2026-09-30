@@ -4,18 +4,18 @@ from types import SimpleNamespace
 from pydantic import BaseModel
 
 from earnings_rag.agent import tools as tools_module
-from earnings_rag.agent.loop import run_agent
+from earnings_rag.agent.loop import run_agent, annotate_novelty
 from earnings_rag.agent.tools import Tool, SEARCH_FILINGS
 
 
 # --- scripted fake of the OpenAI client -------------------------------------
 
-def answer(text):
-    return SimpleNamespace(content=text, tool_calls=None)
+def answer(text, finish_reason='stop'):
+    return SimpleNamespace(content=text, tool_calls=None, finish_reason=finish_reason)
 
 def tool_request(name, arguments, call_id='call_1'):
     call = SimpleNamespace(id=call_id, function=SimpleNamespace(name=name, arguments=arguments))
-    return SimpleNamespace(content=None, tool_calls=[call])
+    return SimpleNamespace(content=None, tool_calls=[call], finish_reason='tool_calls')
 
 class FakeClient:
     """Returns the scripted messages in order and records every request it receives."""
@@ -26,7 +26,12 @@ class FakeClient:
 
     def _create(self, **kwargs):
         self.requests.append(kwargs)
-        return SimpleNamespace(choices=[SimpleNamespace(message=self.script.pop(0))])
+        msg = self.script.pop(0)
+        # 100 input / 10 output tokens per call, so totals are easy to check
+        return SimpleNamespace(
+            choices=[SimpleNamespace(message=msg, finish_reason=msg.finish_reason)],
+            usage=SimpleNamespace(prompt_tokens=100, completion_tokens=10),
+        )
 
 
 class EchoArgs(BaseModel):
@@ -38,6 +43,10 @@ def boom(args):
     raise RuntimeError('database down')
 
 BOOM = Tool('boom', 'Always fails.', EchoArgs, boom)
+
+def fake_search(ids):
+    """A search-shaped tool that always returns the given passage ids."""
+    return Tool('search', 'Fake search.', EchoArgs, lambda a: {'results': [{'id': i} for i in ids]})
 
 
 # --- loop --------------------------------------------------------------------
@@ -93,6 +102,55 @@ def test_step_budget_forces_an_answer_without_tools():
     assert len(result.trace) == 2
     assert 'tool_choice' not in client.requests[0]
     assert client.requests[-1]['tool_choice'] == 'none'
+
+
+# --- novelty, cutoff, usage ---------------------------------------------------
+
+def test_first_search_gets_no_note_and_counts_all_results_as_new():
+    client = FakeClient(tool_request('search', '{"text": "q"}'), answer('ok'))
+    result = run_agent('q', client, tools=[fake_search(['a', 'b'])])
+    assert 'note' not in json.loads(result.trace[0]['result'])
+    assert result.trace[0]['new_results'] == 2
+
+def test_repeated_search_is_annotated_but_still_allowed():
+    client = FakeClient(
+        tool_request('search', '{"text": "q1"}', 'c1'),
+        tool_request('search', '{"text": "q2"}', 'c2'),
+        answer('ok'),
+    )
+    result = run_agent('q', client, tools=[fake_search(['a', 'b'])])
+    assert result.trace[1]['new_results'] == 0
+    assert '2 of 2 passages were already returned' in json.loads(result.trace[1]['result'])['note']
+
+def test_annotate_novelty_reports_partial_overlap():
+    seen = {'a'}
+    out, new = annotate_novelty(json.dumps({'results': [{'id': 'a'}, {'id': 'b'}, {'id': 'c'}]}), seen)
+    assert new == 2
+    assert '1 of 3' in json.loads(out)['note']
+    assert seen == {'a', 'b', 'c'}
+
+def test_annotate_novelty_passes_through_errors_and_other_shapes():
+    for raw in ['{"error": "x"}', '{"echo": "abc"}', 'not json']:
+        assert annotate_novelty(raw, set()) == (raw, None)
+
+def test_token_usage_sums_across_all_model_calls_including_the_forced_one():
+    client = FakeClient(
+        tool_request('echo', '{"text": "a"}', 'c1'),
+        tool_request('echo', '{"text": "b"}', 'c2'),
+        answer('best effort'),
+    )
+    result = run_agent('q', client, tools=[ECHO], max_steps=2)
+    assert len(result.usage) == 3
+    assert result.input_tokens == 300
+    assert result.output_tokens == 30
+
+def test_final_answer_hitting_max_tokens_sets_cut_off():
+    result = run_agent('q', FakeClient(answer('partial...', finish_reason='length')), tools=[ECHO])
+    assert result.cut_off
+    assert result.usage[0]['finish_reason'] == 'length'
+
+def test_normal_answer_is_not_cut_off():
+    assert not run_agent('q', FakeClient(answer('whole')), tools=[ECHO]).cut_off
 
 
 # --- search_filings ----------------------------------------------------------

@@ -12,11 +12,14 @@ def main() -> None:
     result = run_agent(' '.join(sys.argv[1:]), _llm())
 
     for t in result.trace:
-        print(f'[step {t["step"]}] {t["tool"]}({t["arguments"]}) -> {len(t["result"])} chars')
+        print(f'[step {t["step"]}] {t["tool"]}({t["arguments"]}) -> {len(t["result"])} chars, {t["new_results"]} new')
     if result.truncated:
         print(f'[budget of {result.steps} steps spent: answer was forced]')
     print(f'\n{result.answer}')
-    print(f'\n[{result.steps} model calls, {len(result.trace)} tool calls]')
+    if result.cut_off:
+        print('\n[answer cut off at max_tokens]')
+    print(f'\n[{result.steps} model calls, {len(result.trace)} tool calls, '
+          f'{result.input_tokens} in / {result.output_tokens} out tokens]')
 
 
 if __name__ == '__main__':
