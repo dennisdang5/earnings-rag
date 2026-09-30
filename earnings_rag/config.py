@@ -53,6 +53,6 @@ class Settings(BaseSettings):
 
     @property
     def chunks_path(self) -> Path:
-        return self.data_dir / f'chunks_{settings.chunk_size_tokens}_{settings.chunk_overlap_tokens}.jsonl'
+        return self.data_dir / f'chunks_{self.chunk_size_tokens}_{self.chunk_overlap_tokens}.jsonl'
 
 settings = Settings()
