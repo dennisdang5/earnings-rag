@@ -14,6 +14,25 @@ CREATE TABLE IF NOT EXISTS chunks(
     );
 
 CREATE INDEX IF NOT EXISTS chunks_ticker_period_idx ON chunks (ticker, period);
+
+-- segment '' means consolidated; per-segment rows (e.g. a product line) share the table
+CREATE TABLE IF NOT EXISTS facts(
+    ticker  TEXT    NOT NULL,
+    metric  TEXT    NOT NULL,
+    segment TEXT    NOT NULL DEFAULT '',
+    fiscal_year INTEGER NOT NULL,
+    fiscal_period   TEXT    NOT NULL,
+    concept TEXT    NOT NULL,
+    unit    TEXT    NOT NULL,
+    value   DOUBLE PRECISION NOT NULL,
+    period_start    DATE    NOT NULL,
+    period_end  DATE    NOT NULL,
+    derived BOOLEAN NOT NULL,
+    form    TEXT    NOT NULL,
+    accession   TEXT    NOT NULL,
+    filed   DATE    NOT NULL,
+    PRIMARY KEY (ticker, metric, segment, fiscal_year, fiscal_period)
+    );
 """
 
 def connect() -> psycopg.Connection:
@@ -133,6 +152,42 @@ def get_chunk(chunk_id: str) -> dict | None:
         'chunk_index': row[3],
         'text': row[4]
     }
+
+FACT_COLUMNS = ['ticker', 'metric', 'segment', 'fiscal_year', 'fiscal_period', 'concept', 'unit', 'value',
+                'period_start', 'period_end', 'derived', 'form', 'accession', 'filed']
+
+def upsert_facts(rows: list[dict]) -> None:
+    sql = f"""
+        INSERT INTO facts ({', '.join(FACT_COLUMNS)})
+        VALUES ({', '.join(['%s'] * len(FACT_COLUMNS))})
+        ON CONFLICT (ticker, metric, segment, fiscal_year, fiscal_period) DO UPDATE SET
+            {', '.join(f'{c} = EXCLUDED.{c}' for c in FACT_COLUMNS[5:])}
+    """
+    with connect() as conn:
+        with conn.cursor() as cur:
+            cur.executemany(sql, [tuple(r[c] for c in FACT_COLUMNS) for r in rows])
+        conn.commit()
+
+def get_facts(ticker: str, metric: str, fiscal_year: int | None = None, fiscal_period: str | None = None,
+              segment: str = '', limit: int = 12) -> list[dict]:
+    """
+    Most recent first. With no fiscal_year, this returns the latest periods, which answers "last quarter" questions.
+    """
+    sql = f'SELECT {", ".join(FACT_COLUMNS)} FROM facts WHERE ticker = %s AND metric = %s AND segment = %s'
+    params = [ticker, metric, segment]
+    if fiscal_year is not None:
+        sql += ' AND fiscal_year = %s'
+        params.append(fiscal_year)
+    if fiscal_period is not None:
+        sql += ' AND fiscal_period = %s'
+        params.append(fiscal_period)
+    sql += ' ORDER BY period_end DESC, fiscal_period LIMIT %s'  # FY sorts before Q1.. on the same end date
+    params.append(limit)
+
+    with connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, params)
+            return [dict(zip(FACT_COLUMNS, row)) for row in cur.fetchall()]
 
 def init_schema() -> None:
     with connect() as conn:
