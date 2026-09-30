@@ -37,6 +37,7 @@ class Settings(BaseSettings):
     form_type: str = '10-K'
 
     agent_max_steps: int = 6 # Max model calls before the agent is forced to answer
+    agent_max_tokens: int = 500 # Output cap per agent model call; separate from llm_max_tokens so it can be swept
 
     excerpt_chars: int = 400
 
