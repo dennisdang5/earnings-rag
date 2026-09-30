@@ -4,6 +4,7 @@ from typing import Callable, Literal
 
 from pydantic import BaseModel, Field, ValidationError
 
+from earnings_rag.calc import evaluate
 from earnings_rag.pipeline import retrieve
 
 
@@ -74,4 +75,25 @@ SEARCH_FILINGS = Tool(
     fn=search_filings,
 )
 
-DEFAULT_TOOLS = [SEARCH_FILINGS]
+class CalculateArgs(BaseModel):
+    expression: str = Field(description=(
+        'Arithmetic using numbers, + - * / ** and parentheses only. No %, $, units or thousands separators. '
+        'Example, percent growth: (60922 - 26974) / 26974 * 100'
+    ))
+
+
+def calculate(args: CalculateArgs) -> dict:
+    return {'expression': args.expression, 'result': evaluate(args.expression)}
+
+
+CALCULATE = Tool(
+    name='calculate',
+    description=(
+        'Exact arithmetic. Use it for every derived number (growth, margins, differences, ratios) '
+        'instead of computing in your head.'
+    ),
+    args_model=CalculateArgs,
+    fn=calculate,
+)
+
+DEFAULT_TOOLS = [SEARCH_FILINGS, CALCULATE]

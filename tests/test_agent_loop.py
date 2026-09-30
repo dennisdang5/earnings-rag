@@ -179,3 +179,23 @@ def test_search_filings_passes_company_and_disables_keyword_routing(monkeypatch)
 def test_search_filings_rejects_unknown_company():
     out = json.loads(SEARCH_FILINGS.call('{"query": "x", "company": "TSLA"}'))
     assert 'error' in out
+
+
+# --- calculate ---------------------------------------------------------------
+
+def test_calculate_is_a_default_tool_with_a_required_expression():
+    from earnings_rag.agent.tools import DEFAULT_TOOLS, CALCULATE
+    assert CALCULATE in DEFAULT_TOOLS
+    assert CALCULATE.schema()['function']['parameters']['required'] == ['expression']
+
+def test_agent_run_through_the_real_calculate_tool():
+    from earnings_rag.agent.tools import CALCULATE
+    client = FakeClient(tool_request('calculate', '{"expression": "(150 - 100) / 100 * 100"}'), answer('50% growth'))
+    result = run_agent('q', client, tools=[CALCULATE])
+    assert json.loads(result.trace[0]['result'])['result'] == 50
+
+def test_calculate_errors_reach_the_model_as_tool_results():
+    from earnings_rag.agent.tools import CALCULATE
+    client = FakeClient(tool_request('calculate', '{"expression": "1,000 + 5"}'), answer('ok'))
+    result = run_agent('q', client, tools=[CALCULATE])
+    assert 'thousands separators' in json.loads(result.trace[0]['result'])['error']

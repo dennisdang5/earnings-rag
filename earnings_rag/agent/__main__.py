@@ -12,7 +12,8 @@ def main() -> None:
     result = run_agent(' '.join(sys.argv[1:]), _llm())
 
     for t in result.trace:
-        print(f'[step {t["step"]}] {t["tool"]}({t["arguments"]}) -> {len(t["result"])} chars, {t["new_results"]} new')
+        new = '' if t['new_results'] is None else f', {t["new_results"]} new'
+        print(f'[step {t["step"]}] {t["tool"]}({t["arguments"]}) -> {len(t["result"])} chars{new}')
     if result.truncated:
         print(f'[budget of {result.steps} steps spent: answer was forced]')
     print(f'\n{result.answer}')
