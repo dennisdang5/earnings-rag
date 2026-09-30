@@ -147,3 +147,12 @@ refused — so the difference had to be in the prompt text itself.
 - AgentResult records cut_off (final answer finish_reason == "length") and per-call usage (input/output tokens, finish_reason), with totals derived from that list. New agent_max_tokens (default 500, separate from llm_max_tokens) so max_tokens can be swept against quality and token cost in step 6 without touching /ask
 - Input tokens grow faster than step count because the whole history is re-sent each call; track tokens, not just steps, when testing whether more steps help
 - Live runs on the current prompt showed no cutoffs (competition answer used 341 output tokens of 500); the earlier cut-off answer was longer because it padded to several points per company
+
+# 9-30-2026 - calculate tool: AST allowlist, floats, raw arithmetic only
+- The model's expression is untrusted input, so evaluation walks the parsed AST and accepts only numbers, + - * / ** and unary +/-. Names, calls, attributes and subscripts are rejected by construction. eval() with empty globals is escapable through attribute chains on literals; a regex can't handle precedence and parentheses
+- Every number is converted to float before evaluating. With Python ints, 9**9**9**9 would build an enormous integer and hang the process; with floats it overflows immediately and becomes an error the model can read. Floats are exact to ~9e15, far beyond the dollar figures here
+- Expressions are capped at 200 characters, and non-finite or complex results (e.g. (-8)**0.5) are errors
+- Errors are written for the model: a comma in 26,974 and a % sign each get a specific hint, because those are the mistakes it makes
+- Raw arithmetic only, no pct_change/margin helpers: smallest attack surface and simplest to review. The tool guarantees the arithmetic, not the formula, so a wrong formula (dividing by the wrong year) is still possible; step 6 should measure it
+- Live run: given figures in the question, the model called calculate and converted units correctly (125.88%). The search half of that answer drifted into revenue-recognition boilerplate instead of growth drivers, a retrieval problem, not a calculate one
+- Live run: the Tesla question now refuses with zero tool calls, but runs vary even at temperature 0, so one run is not evidence the prompt change caused it
