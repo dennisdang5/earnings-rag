@@ -16,6 +16,7 @@ def main() -> None:
     if result.truncated:
         print(f'[budget of {result.steps} steps spent: answer was forced]')
     print(f'\n{result.answer}')
+    print(f'\n[{result.steps} model calls, {len(result.trace)} tool calls]')
 
 
 if __name__ == '__main__':
