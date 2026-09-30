@@ -139,3 +139,11 @@ refused — so the difference had to be in the prompt text itself.
 - search_filings disables keyword company routing (route=False); the model names the company explicitly, so routing must not second-guess it
 - period/form are left out of the tool schema until 10-Qs exist; a parameter that silently does nothing makes the model believe it filtered
 - Loop is tested with a scripted fake client so CI stays free of API keys
+
+# 9-30-2026 - Agent follow-ups: relevance/scope prompt, novelty note, cutoff + token tracking
+- Answer drift is a relevance failure, not a groundedness one: the Apple/Capital One competition answer cited real passages, but about IP, regulation and brand rather than competition. Step 6 should score the two separately
+- Scope and relevance rules added to the system prompt. Live result: Tesla went from 4 searches to 1 (it still searched once instead of refusing outright, so the scope rule is followed loosely), but competition drift persisted (IP and brand/ESG items still listed). Prompt wording alone did not fix it; candidates are a reranker or a distance threshold
+- Novelty note is advisory: repeats are only known after the search has run, so the loop annotates the result ("k of n passages already returned") and the model may still search again; only agent_max_steps hard-stops it. Judged by returned chunk ids, not an argument cache, because the model rewords queries. Not exercised by the live runs (no repeats occurred), only by unit tests
+- AgentResult records cut_off (final answer finish_reason == "length") and per-call usage (input/output tokens, finish_reason), with totals derived from that list. New agent_max_tokens (default 500, separate from llm_max_tokens) so max_tokens can be swept against quality and token cost in step 6 without touching /ask
+- Input tokens grow faster than step count because the whole history is re-sent each call; track tokens, not just steps, when testing whether more steps help
+- Live runs on the current prompt showed no cutoffs (competition answer used 341 output tokens of 500); the earlier cut-off answer was longer because it padded to several points per company
