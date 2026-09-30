@@ -126,3 +126,16 @@ refused — so the difference had to be in the prompt text itself.
 - Changing "NVIDIA" to "Nvidia" or "China" to "china" resulted in a 0/10 refusal
 - Generation fragility such that the refusal decision sits near a boundary and perhaps a token level difference in the question tip it
 - 
+# 9-30-2026 - Hand-rolled agent loop alongside the fixed pipeline
+- The model chooses when to call tools; the loop (earnings_rag/agent/loop.py) is ~40 lines on the OpenAI SDK with no framework so every message and stop condition is visible
+- /ask and the CI recall gate are untouched; the agent is additive
+- 10-Qs rather than call transcripts for quarterly text since transcripts aren't on EDGAR, so search_transcripts became search_filings
+
+# 9-30-2026 - Agent tool design
+- One pydantic model per tool both generates the JSON schema sent to the model and validates the arguments it sends back
+- Tool errors (bad arguments, unknown tool, exceptions) are returned to the model as {"error": ...} rather than raised, so it can retry and one bad call doesn't kill the request
+- Budget exhausted forces a final answer (tool_choice="none", truncated=True) rather than an error since a partial answer is still useful
+- Citations are [chunk_id] not [n] because positional numbers collide once the agent can run two searches
+- search_filings disables keyword company routing (route=False); the model names the company explicitly, so routing must not second-guess it
+- period/form are left out of the tool schema until 10-Qs exist; a parameter that silently does nothing makes the model believe it filtered
+- Loop is tested with a scripted fake client so CI stays free of API keys
