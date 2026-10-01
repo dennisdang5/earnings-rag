@@ -17,6 +17,12 @@ def main() -> None:
     if result.truncated:
         print(f'[budget of {result.steps} steps spent: answer was forced]')
     print(f'\n{result.answer}')
+    if result.revised:
+        print('[citation check sent the answer back for one revision]')
+    for sentence in result.uncited:
+        print(f'[uncited figure: {sentence}]')
+    if result.unknown_ids:
+        print(f'[cited ids no tool returned: {", ".join(result.unknown_ids)}]')
     if result.cut_off:
         print('\n[answer cut off at max_tokens]')
     print(f'\n[{result.steps} model calls, {len(result.trace)} tool calls, '

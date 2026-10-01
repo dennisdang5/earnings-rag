@@ -167,7 +167,7 @@ def test_calculate_is_a_default_tool_with_a_required_expression():
 
 def test_agent_run_through_the_real_calculate_tool():
     from earnings_rag.agent.tools import CALCULATE
-    client = FakeClient(tool_request('calculate', '{"expression": "(150 - 100) / 100 * 100"}'), answer('50% growth'))
+    client = FakeClient(tool_request('calculate', '{"expression": "(150 - 100) / 100 * 100"}'), answer('Growth is fifty percent.'))
     result = run_agent('q', client, tools=[CALCULATE])
     assert json.loads(result.trace[0]['result'])['result'] == 50
 

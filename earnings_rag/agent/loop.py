@@ -1,6 +1,7 @@
 import json
 from dataclasses import dataclass, field
 
+from earnings_rag.agent.citations import check_citations, revision_request
 from earnings_rag.agent.tools import Tool, DEFAULT_TOOLS
 from earnings_rag.config import settings
 
@@ -28,6 +29,9 @@ class AgentResult:
     steps: int = 0                                   # model calls used, not counting the forced final one
     truncated: bool = False                          # True if the step budget ran out and the answer was forced
     cut_off: bool = False                            # True if the final answer hit max_tokens mid-answer
+    revised: bool = False                            # True if the citation check sent the answer back once
+    uncited: list[str] = field(default_factory=list)       # sentences in the final answer with a figure and no [id]
+    unknown_ids: list[str] = field(default_factory=list)   # cited ids in the final answer that no tool returned
 
     @property
     def input_tokens(self) -> int:
@@ -95,6 +99,7 @@ def run_agent(question: str, client, tools: list[Tool] | None = None,
     trace = []
     usage = []
     seen_ids: set[str] = set()
+    revised = False
 
     def call_model(**extra):
         response = client.chat.completions.create(
@@ -111,8 +116,15 @@ def run_agent(question: str, client, tools: list[Tool] | None = None,
         msg = choice.message
 
         if not msg.tool_calls:
+            problems = check_citations(msg.content or '', seen_ids)
+            if (problems['uncited'] or problems['unknown_ids']) and not revised:
+                # one revision turn, tools still allowed so it can fetch a missing fact; a second failure is accepted
+                revised = True
+                messages.append({'role': 'assistant', 'content': msg.content})
+                messages.append({'role': 'user', 'content': revision_request(problems)})
+                continue
             return AgentResult(answer=msg.content or '', trace=trace, usage=usage, steps=step,
-                               cut_off=choice.finish_reason == 'length')
+                               cut_off=choice.finish_reason == 'length', revised=revised, **problems)
 
         messages.append(_assistant_message(msg))
         for tc in msg.tool_calls:
@@ -129,5 +141,6 @@ def run_agent(question: str, client, tools: list[Tool] | None = None,
 
     # Budget spent. A partial answer from what it has gathered beats an error, so forbid further tool calls.
     choice = call_model(tool_choice='none')
-    return AgentResult(answer=choice.message.content or '', trace=trace, usage=usage, steps=max_steps,
-                       truncated=True, cut_off=choice.finish_reason == 'length')
+    answer = choice.message.content or ''
+    return AgentResult(answer=answer, trace=trace, usage=usage, steps=max_steps, truncated=True,
+                       cut_off=choice.finish_reason == 'length', revised=revised, **check_citations(answer, seen_ids))
