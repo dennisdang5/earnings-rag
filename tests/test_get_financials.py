@@ -6,7 +6,7 @@ import pytest
 from earnings_rag.agent import tools as tools_module
 from earnings_rag.agent.loop import annotate_novelty
 from earnings_rag.agent.tools import GET_FINANCIALS, DEFAULT_FACT_ROWS, fact_result
-from tests.test_agent_loop import FakeClient, answer, tool_request
+from fakes import FakeClient, answer, tool_request
 from earnings_rag.agent.loop import run_agent
 
 

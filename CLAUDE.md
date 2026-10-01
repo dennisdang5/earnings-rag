@@ -71,6 +71,7 @@ python eval/run_eval.py --refusals                  # generation check, calls th
 
 **Known issues and open findings:**
 - Answer drift: "How do Apple and Capital One each describe their competition risks?" still lists IP and brand/ESG items as competition risks. The prompt rule did not fix it; candidates are a reranker or a distance threshold.
+- Miscited derived numbers: on mixed text+number questions a growth rate can cite a single period's fact id (e.g. "114% [NVDA_revenue_FY2025]"), which does not support a change. A prompt rule for this made the agent skip get_financials; candidate fix is a post-answer citation check, then the agent eval.
 - The scope rule is followed loosely: the Tesla question sometimes still searches once before refusing.
 - `METRICS` in `xbrl.py` is hand-verified per company, so a new ticker needs its XBRL concepts checked (COF "revenue" is `Revenues`; the standard `RevenueFromContract...` concept is only its ~$5.9B of fee revenue). Split detection and its consistency check do scale; metric mapping does not yet.
 - GOOGL-style multi-class issuers have no cover-page share count in the API, so splits are not detected for them; the consistency check will refuse to store them until `SPLIT_OVERRIDES` supplies cutoffs. Run ingestion for a new ticker and read the "split check" line: zero split-sized mismatches is the evidence the adjustment is right.
