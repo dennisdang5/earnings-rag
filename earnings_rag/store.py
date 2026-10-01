@@ -193,6 +193,13 @@ def get_facts(ticker: str, metric: str, fiscal_year: int | None = None, fiscal_p
             cur.execute(sql, params)
             return [dict(zip(FACT_COLUMNS, row)) for row in cur.fetchall()]
 
+def fact_years(ticker: str, metric: str, segment: str = '') -> tuple[int, int] | None:
+    """(first, last) fiscal year stored for a metric, or None if there is none."""
+    with connect() as conn:
+        row = conn.execute('SELECT min(fiscal_year), max(fiscal_year) FROM facts '
+                           'WHERE ticker = %s AND metric = %s AND segment = %s', (ticker, metric, segment)).fetchone()
+    return None if row[0] is None else (row[0], row[1])
+
 def init_schema() -> None:
     with connect() as conn:
         conn.execute(SCHEMA_SQL)
