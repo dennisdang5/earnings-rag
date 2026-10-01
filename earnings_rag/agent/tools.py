@@ -6,6 +6,8 @@ from pydantic import BaseModel, Field, ValidationError
 
 from earnings_rag.calc import evaluate
 from earnings_rag.pipeline import retrieve
+from earnings_rag.store import get_facts, fact_years
+from earnings_rag.xbrl import METRICS
 
 
 @dataclass
@@ -68,8 +70,8 @@ SEARCH_FILINGS = Tool(
     name='search_filings',
     description=(
         'Semantic search over the text of NVIDIA, Apple, and Capital One annual reports (10-K). '
-        'Returns the 5 closest passages, each with an id you can cite. Tables are not included, '
-        'so this cannot answer questions about specific numbers.'
+        'Returns the 5 closest passages, each with an id you can cite. Tables are not included: '
+        'for financial figures, use get_financials.'
     ),
     args_model=SearchFilingsArgs,
     fn=search_filings,
@@ -96,4 +98,67 @@ CALCULATE = Tool(
     fn=calculate,
 )
 
-DEFAULT_TOOLS = [SEARCH_FILINGS, CALCULATE]
+COMPANIES = ('NVDA', 'AAPL', 'COF')
+AVAILABLE = {t: [m for m, spec in METRICS.items() if t in spec['concepts']] for t in COMPANIES}
+DEFAULT_FACT_ROWS = 8  # the latest two years of quarters and their FY rows; every row is re-sent on later calls
+
+MetricName = Literal[tuple(METRICS)]  # the model can only name metrics that exist
+
+
+class GetFinancialsArgs(BaseModel):
+    company: Literal[COMPANIES]
+    metric: MetricName
+    fiscal_year: int | None = Field(default=None, description='Omit for the most recent periods.')
+    period: Literal['FY', 'Q1', 'Q2', 'Q3', 'Q4'] | None = Field(
+        default=None, description='FY for the full year, Q1-Q4 for a quarter. Omit for all periods.')
+
+
+def fact_result(row: dict) -> dict:
+    """One facts row as the model sees it: dollars in millions, provenance, and the as-reported figure if adjusted."""
+    period = row['fiscal_period']
+    value, unit = row['value'], row['unit']
+    if unit == 'USD':
+        value, unit = value / 1e6, 'USD millions'   # the 10-Ks report in millions; long numbers invite digit errors
+        value = int(value) if value.is_integer() else round(value, 3)
+    elif unit == 'USD/shares':
+        unit = 'USD per share'
+
+    out = {'id': f"{row['ticker']}_{row['metric']}_FY{row['fiscal_year']}{'' if period == 'FY' else period}",
+           'company': row['ticker'], 'metric': row['metric'], 'fiscal_year': row['fiscal_year'], 'period': period,
+           'period_end': str(row['period_end']), 'value': value, 'unit': unit, 'derived': row['derived'],
+           'source': f"{row['form']} filed {row['filed']}"}
+    if row['split_factor'] != 1:
+        # the filing shows the pre-split figure; giving both lets the answer match the document it cites
+        out['split_adjusted'] = True
+        out['as_reported'] = round(row['value'] * row['split_factor'], 6)
+    return out
+
+
+def get_financials(args: GetFinancialsArgs) -> dict:
+    if args.metric not in AVAILABLE[args.company]:
+        return {'error': f'{args.company} does not report {args.metric}. '
+                         f'Available for {args.company}: {", ".join(AVAILABLE[args.company])}'}
+
+    rows = get_facts(args.company, args.metric, args.fiscal_year, args.period, limit=DEFAULT_FACT_ROWS)
+    if not rows:
+        years = fact_years(args.company, args.metric)
+        span = f'fiscal years {years[0]}-{years[1]}' if years else 'no years'
+        return {'results': [], 'note': f'No matching data. {args.company} {args.metric} is available for {span}.'}
+    return {'results': [fact_result(r) for r in rows]}
+
+
+GET_FINANCIALS = Tool(
+    name='get_financials',
+    description=(
+        'Reported financial figures from SEC XBRL data, each with an id you can cite. '
+        'Fiscal year is the calendar year the fiscal year ends in (NVIDIA fiscal 2025 ended January 2025). '
+        'Dollar amounts are in USD millions. Per-share values are adjusted for stock splits to today\'s share count; '
+        'adjusted rows also give the as_reported figure. derived=true means a quarter computed as a year-to-date '
+        'total minus the earlier one. Metrics per company: '
+        + '; '.join(f'{t}: {", ".join(ms)}' for t, ms in AVAILABLE.items()) + '.'
+    ),
+    args_model=GetFinancialsArgs,
+    fn=get_financials,
+)
+
+DEFAULT_TOOLS = [SEARCH_FILINGS, GET_FINANCIALS, CALCULATE]
