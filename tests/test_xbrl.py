@@ -1,4 +1,6 @@
-from earnings_rag.xbrl import normalize
+from datetime import date
+
+from earnings_rag.xbrl import normalize, find_splits, split_factor
 
 M = 1_000_000
 
@@ -116,3 +118,100 @@ def test_metric_not_mapped_for_a_company_is_absent():
 def test_instant_facts_without_a_start_date_are_ignored():
     balance_sheet_style = [{'end': '2024-12-31', 'val': 1, 'accn': 'x', 'form': '10-K', 'filed': '2025-02-01'}]
     assert normalize(companyfacts(('Revenues', 'USD', balance_sheet_style)), 'NVDA') == []
+
+
+# --- stock splits ------------------------------------------------------------------------------------------------
+
+SPLIT = 'StockholdersEquityNoteStockSplitConversionRatio1'
+
+
+def ratio(val, end, filed, form='10-Q'):
+    return {'end': end, 'val': val, 'accn': 'x', 'fy': 0, 'fp': 'X', 'form': form, 'filed': filed}
+
+
+# real rows: each split's ratio is first reported in the first filing after it, with unreliable period dates
+NVDA_SPLIT_ROWS = [
+    ratio(4, '2021-06-03', '2021-08-20'), ratio(4, '2021-06-03', '2021-11-22'),
+    ratio(4, '2021-07-19', '2022-03-18', '10-K'), ratio(4, '2021-07-19', '2022-05-27'),
+    ratio(10, '2024-05-31', '2024-08-28'), ratio(10, '2024-05-31', '2024-11-20'),
+    ratio(10, '2024-06-30', '2025-05-28'),
+]
+AAPL_SPLIT_ROWS = [
+    ratio(7, '2014-06-06', '2014-07-23'), ratio(7, '2014-06-06', '2014-10-27', '10-K'),
+    ratio(4, '2020-08-28', '2020-10-30', '10-K'), ratio(4, '2020-08-28', '2021-01-28'),
+]
+NVDA_SPLITS = [(date(2021, 8, 20), 4), (date(2024, 8, 28), 10)]
+
+
+def test_each_split_is_one_event_cut_off_at_its_earliest_filing():
+    # NVIDIA's 4:1 appears with two different context dates, 46 days apart; they are still one split
+    assert find_splits(companyfacts((SPLIT, 'pure', NVDA_SPLIT_ROWS))) == NVDA_SPLITS
+
+
+def test_same_company_two_splits_are_distinguished_by_ratio():
+    assert find_splits(companyfacts((SPLIT, 'pure', AAPL_SPLIT_ROWS))) == [(date(2014, 7, 23), 7),
+                                                                           (date(2020, 10, 30), 4)]
+
+
+def test_same_ratio_years_apart_is_two_splits():
+    rows = [ratio(2, '2015-03-01', '2015-04-01'), ratio(2, '2020-03-01', '2020-04-01')]
+    assert len(find_splits(companyfacts((SPLIT, 'pure', rows)))) == 2
+
+
+def test_no_split_concept_means_no_splits():
+    assert find_splits(companyfacts(('Revenues', 'USD', []))) == []
+
+
+def test_split_factor_applies_only_to_values_filed_before_the_cutoff():
+    assert split_factor('2024-08-27', NVDA_SPLITS) == 10       # day before: pre-split basis (only the 10:1 is after)
+    assert split_factor('2024-08-28', NVDA_SPLITS) == 1        # the cutoff filing itself reports the ratio
+    assert split_factor('2021-02-18', NVDA_SPLITS) == 40       # before both splits compounds
+    assert split_factor('2022-01-01', NVDA_SPLITS) == 10
+
+
+def nvda_eps(*rows):
+    return companyfacts((SPLIT, 'pure', NVDA_SPLIT_ROWS), ('EarningsPerShareDiluted', 'USD/shares', list(rows)))
+
+
+def test_eps_filed_before_a_split_is_rescaled_and_the_factor_recorded():
+    rows = by_period(normalize(nvda_eps(
+        fact('2021-01-31', '2022-01-30', 3.85, filed='2024-02-21'),   # as reported before the 2024 10:1 split
+        fact('2022-01-31', '2023-01-29', 0.17, filed='2025-02-26'),   # already restated after it
+    ), 'NVDA'), 'eps_diluted')
+    assert rows[(2022, 'FY')]['value'] == 0.385
+    assert rows[(2022, 'FY')]['split_factor'] == 10
+    assert rows[(2023, 'FY')]['value'] == 0.17
+    assert rows[(2023, 'FY')]['split_factor'] == 1
+
+
+def test_adjusted_eps_makes_year_over_year_growth_sensible():
+    rows = by_period(normalize(nvda_eps(
+        fact('2021-01-31', '2022-01-30', 3.85, filed='2024-02-21'),
+        fact('2022-01-31', '2023-01-29', 0.17, filed='2025-02-26'),
+    ), 'NVDA'), 'eps_diluted')
+    growth = rows[(2023, 'FY')]['value'] / rows[(2022, 'FY')]['value'] - 1
+    assert -0.57 < growth < -0.55   # about -56%; unadjusted it would be -95%
+
+
+def test_eps_before_both_splits_is_divided_by_both():
+    rows = by_period(normalize(nvda_eps(
+        fact('2020-02-03', '2021-01-31', 6.9, filed='2021-02-18'),
+    ), 'NVDA'), 'eps_diluted')
+    assert rows[(2021, 'FY')]['value'] == 0.1725
+    assert rows[(2021, 'FY')]['split_factor'] == 40
+
+
+def test_non_per_share_metrics_are_never_split_adjusted():
+    rows = normalize(companyfacts((SPLIT, 'pure', NVDA_SPLIT_ROWS), ('NetIncomeLoss', 'USD', [
+        fact('2021-01-31', '2022-01-30', 9_752 * M, filed='2022-03-18'),
+        fact('2022-01-31', '2023-01-29', 4_368 * M, filed='2023-02-24')])), 'NVDA')
+    out = by_period(rows, 'net_income')
+    assert out[(2022, 'FY')]['value'] == 9_752 * M
+    assert out[(2022, 'FY')]['split_factor'] == 1
+
+
+def test_company_without_splits_is_unadjusted():
+    rows = by_period(normalize(companyfacts(('EarningsPerShareDiluted', 'USD/shares', [
+        fact('2023-01-01', '2023-12-31', 12.0, filed='2024-02-20'),
+        fact('2024-01-01', '2024-12-31', 14.0, filed='2025-02-20')])), 'COF'), 'eps_diluted')
+    assert [rows[(y, 'FY')]['split_factor'] for y in (2023, 2024)] == [1, 1]
