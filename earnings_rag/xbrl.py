@@ -104,22 +104,43 @@ def _classify(days: int) -> str | None:
     return None
 
 
-def _latest_unique(rows: list[dict]) -> list[dict]:
+def _latest_unique(rows: list[dict], splits: list[tuple[date, float]] | None = None) -> list[dict]:
     """
     Each value is repeated in later filings as a prior-period comparison. Keep one row per period: the most
     recently filed, so restatements win. Instant facts have no 'start' and are skipped.
 
     Per-share values are the exception to "latest wins": a period is only re-presented for about two years, so
     older ones keep their original share basis. They are rescaled in emit() using find_splits().
+
+    Given splits, a per-share period takes the most precise reported reading instead (see _most_precise).
     """
-    best = {}
+    readings: dict[tuple[str, str], list[dict]] = {}
     for r in rows:
-        if 'start' not in r:
-            continue
-        key = (r['start'], r['end'])
-        if key not in best or r['filed'] >= best[key]['filed']:
-            best[key] = r
-    return list(best.values())
+        if 'start' in r:
+            readings.setdefault((r['start'], r['end']), []).append(r)
+    out = []
+    for group in readings.values():
+        latest = max(group, key=lambda r: r['filed'])
+        out.append(_most_precise(group, latest, splits) if splits is not None else latest)
+    return out
+
+
+def _most_precise(group: list[dict], latest: dict, splits: list[tuple[date, float]]) -> dict:
+    """
+    EPS is published to 2 decimals, so each split divides the precision away: NVIDIA's FY2023 EPS was 1.74 before the
+    10:1 split and 0.17 after, but 1.74 / 10 = 0.174 is the company's own figure with a digit more. Take the reading
+    filed before the most splits, as long as it agrees with the latest one within the latest's rounding; if it does
+    not (a restatement), the latest reading wins. Nothing is computed: every value is one the company reported.
+    """
+    def factor(r):
+        return split_factor(r['filed'], splits)
+
+    oldest = max(group, key=factor)
+    if factor(oldest) <= factor(latest):
+        return latest
+    if abs(oldest['val'] / factor(oldest) - latest['val'] / factor(latest)) <= EPS_ROUNDING / factor(latest) + 1e-9:
+        return oldest
+    return latest
 
 
 def _locate(start: date, end: date, years: list[tuple]) -> tuple[int, date] | None:
@@ -213,7 +234,7 @@ def split_factor(filed: str, splits: list[tuple[date, float]]) -> float:
 
 def _normalize_metric(rows: list[dict], ticker: str, metric: str, concept: str, spec: dict,
                       splits: list[tuple[date, float]]) -> list[dict]:
-    rows = _latest_unique(rows)
+    rows = _latest_unique(rows, splits if spec.get('per_share') else None)
     annual = {(r['start'], r['end']) for r in rows if _classify(_days(r)) == 'FY'}
     if not annual:
         return []
