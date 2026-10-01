@@ -2,6 +2,7 @@ import json
 import sys
 import time
 from datetime import date, timedelta
+from statistics import median
 
 from earnings_rag.config import settings
 
@@ -42,8 +43,21 @@ METRICS = {
         'unit': 'USD', 'additive': True},
 }
 
-SPLIT_CONCEPT = 'StockholdersEquityNoteStockSplitConversionRatio1'
-SPLIT_CLUSTER_DAYS = 180
+SHARES_CONCEPT = 'WeightedAverageNumberOfDilutedSharesOutstanding'
+
+# A jump in the cover-page share count within SPLIT_TOLERANCE of one of these ratios (or its reciprocal, for reverse
+# splits) is a split candidate; ordinary buybacks and issuance move the count a few percent per quarter.
+SPLIT_RATIOS = [1.5, 2, 3, 4, 5, 6, 7, 8, 10, 15, 20, 25, 30, 40, 50]
+SPLIT_TOLERANCE = 0.06
+CORROBORATION_TOLERANCE = 0.02
+
+# ticker -> [(cutoff, ratio)] used instead of detection, for issuers whose cover-page counts are not in the data
+# (multi-class companies such as GOOGL). A cutoff is the filing date of the first post-split filing.
+SPLIT_OVERRIDES: dict[str, list[tuple[date, float]]] = {}
+
+EPS_ROUNDING = 0.005       # EPS is reported to 2 decimals; scaling a reading by 1/factor scales this error too
+MIN_SPLIT_SIZED = 1.8      # readings disagreeing by at least this, in a split-like ratio, point to a wrong cutoff
+MAX_MISMATCH_RATE = 0.05
 
 PERIOD_ORDER = {'Q1': 1, 'Q2': 2, 'Q3': 3, 'Q4': 4, 'FY': 5}
 
@@ -123,27 +137,69 @@ def _locate(start: date, end: date, years: list[tuple]) -> tuple[int, date] | No
     return None
 
 
-def find_splits(companyfacts: dict) -> list[tuple[date, float]]:
-    """
-    Stock splits as (cutoff, ratio), oldest first. The ratio comes from XBRL, but the dates attached to it are
-    unusable as effective dates (NVIDIA's 10:1 carries period ends of 2024-05-31 and 2024-06-30). What is reliable:
-    the first filing to report a ratio is the first one filed after the split. So the cutoff is the earliest
-    filing date in the cluster, and a value filed before it is on the old share basis.
-
-    Rows for one split are clustered by ratio and nearby 'end' dates, since the same ratio can recur years later.
-    """
-    rows = companyfacts['facts']['us-gaap'].get(SPLIT_CONCEPT, {}).get('units', {}).get('pure', [])
-    rows = sorted(rows, key=lambda r: (r['val'], r['end']))
-
-    clusters: list[list[dict]] = []
+def _cover_counts(companyfacts: dict) -> list[tuple[str, float]]:
+    """(filing date, shares outstanding on the cover page) per filing, oldest first. Share classes are summed."""
+    rows = (companyfacts['facts'].get('dei', {}).get('EntityCommonStockSharesOutstanding', {})
+            .get('units', {}).get('shares', []))
+    per_filing: dict[tuple[str, str], float] = {}
     for r in rows:
-        prev = clusters[-1][-1] if clusters else None
-        gap = (date.fromisoformat(r['end']) - date.fromisoformat(prev['end'])).days if prev else None
-        if prev is None or prev['val'] != r['val'] or gap > SPLIT_CLUSTER_DAYS:
-            clusters.append([])
-        clusters[-1].append(r)
+        key = (r['filed'], r['accn'])
+        per_filing[key] = per_filing.get(key, 0) + r['val']
+    return sorted((filed, v) for (filed, _), v in per_filing.items() if v > 0)  # zeros are placeholder rows
 
-    return sorted((date.fromisoformat(min(r['filed'] for r in c)), c[0]['val']) for c in clusters)
+
+def _nearest_split_ratio(jump: float) -> float | None:
+    """The split ratio a share-count jump looks like (0.1 for a 1-for-10 reverse split), or None for ordinary drift."""
+    for ratio in SPLIT_RATIOS:
+        if abs(jump / ratio - 1) < SPLIT_TOLERANCE:
+            return ratio
+        if abs(jump * ratio - 1) < SPLIT_TOLERANCE:
+            return 1 / ratio
+    return None
+
+
+def _corroborated(cutoff: date, ratio: float, companyfacts: dict) -> bool:
+    """
+    A real split restates old periods: a period reported both before and after the cutoff shows diluted shares scaled
+    by the ratio. An acquisition that doubles the share count restates nothing, so the same period reads ~1x.
+    With no period straddling the cutoff yet, nothing contradicts the jump, so it is accepted.
+    """
+    rows = companyfacts['facts']['us-gaap'].get(SHARES_CONCEPT, {}).get('units', {}).get('shares', [])
+    by_period: dict[tuple[str, str], dict[str, float]] = {}
+    for r in rows:
+        if 'start' in r and r['val'] > 0:
+            by_period.setdefault((r['start'], r['end']), {})[r['filed']] = r['val']
+
+    observed = []
+    for readings in by_period.values():
+        before = [f for f in readings if date.fromisoformat(f) < cutoff]
+        after = [f for f in readings if date.fromisoformat(f) >= cutoff]
+        if before and after:  # the closest reading on each side, so only this split lies between them
+            observed.append(readings[min(after)] / readings[max(before)])
+
+    return not observed or abs(median(observed) / ratio - 1) < CORROBORATION_TOLERANCE
+
+
+def find_splits(companyfacts: dict, ticker: str | None = None) -> list[tuple[date, float]]:
+    """
+    Stock splits as (cutoff, ratio), oldest first; a value filed before the cutoff is on the old share basis.
+
+    Detected from the share count on each filing's cover page, which jumps by the split ratio between the last
+    pre-split and first post-split filing, so the cutoff is exactly the first filing after the split. Tagged split
+    ratios are not used: some companies tag them in the first post-split filing, some months late (WMT), some before
+    the split happens (GOOGL).
+    """
+    if ticker in SPLIT_OVERRIDES:
+        return sorted(SPLIT_OVERRIDES[ticker])
+
+    counts = _cover_counts(companyfacts)
+    splits = []
+    for (_, before), (filed, after) in zip(counts, counts[1:]):
+        ratio = _nearest_split_ratio(after / before)
+        cutoff = date.fromisoformat(filed)
+        if ratio is not None and _corroborated(cutoff, ratio, companyfacts):
+            splits.append((cutoff, ratio))
+    return splits
 
 
 def split_factor(filed: str, splits: list[tuple[date, float]]) -> float:
@@ -219,7 +275,7 @@ def normalize(companyfacts: dict, ticker: str) -> list[dict]:
     derived by subtraction and flagged derived=True. Pure function: no network, no database.
     """
     gaap = companyfacts['facts']['us-gaap']
-    splits = find_splits(companyfacts)
+    splits = find_splits(companyfacts, ticker)
     out = []
     for metric, spec in METRICS.items():
         concept = spec['concepts'].get(ticker)
@@ -231,14 +287,69 @@ def normalize(companyfacts: dict, ticker: str) -> list[dict]:
     return out
 
 
+def check_split_consistency(companyfacts: dict, ticker: str, splits: list[tuple[date, float]]) -> tuple[int, list[dict]]:
+    """
+    A period reported by several filings must agree once every reading is on the same share basis. Returns the
+    number of per-share periods checked and the ones that disagree by more than the readings' rounding.
+
+    Each mismatch is classified: 'split' if the readings differ by about a split ratio (what a wrong or missing
+    cutoff produces, e.g. 20x), otherwise 'restated' (a genuine restatement, e.g. Tesla's Q1 2024 EPS 0.34 -> 0.41).
+    Only the former should block ingestion.
+    """
+    gaap = companyfacts['facts']['us-gaap']
+    checked, bad = 0, []
+    for metric, spec in METRICS.items():
+        concept = spec['concepts'].get(ticker)
+        if not spec.get('per_share') or concept not in gaap:
+            continue
+        by_period: dict[tuple[str, str], dict[str, float]] = {}
+        for r in gaap[concept]['units'].get(spec['unit'], []):
+            if 'start' in r and r['end'] >= f'{MIN_FISCAL_YEAR - 1}-01-01':
+                by_period.setdefault((r['start'], r['end']), {})[r['filed']] = r['val']
+
+        for period, readings in by_period.items():
+            if len(readings) < 2:
+                continue
+            checked += 1
+            factors = {f: split_factor(f, splits) for f in readings}
+            adjusted = [v / factors[f] for f, v in readings.items()]
+            errors = sorted((EPS_ROUNDING / factor for factor in factors.values()), reverse=True)
+            if max(adjusted) - min(adjusted) <= errors[0] + errors[1] + 1e-9:  # the two largest rounding errors
+                continue
+
+            low, high = min(abs(v) for v in adjusted), max(abs(v) for v in adjusted)
+            ratio = high / low if low else float('inf')
+            split_sized = ratio >= MIN_SPLIT_SIZED and _nearest_split_ratio(ratio) is not None
+            bad.append({'metric': metric, 'period': period, 'readings': readings,
+                        'kind': 'split' if split_sized else 'restated'})
+    return checked, bad
+
+
 def ingest_facts(refresh: bool = False) -> None:
     from earnings_rag.store import init_schema, upsert_facts
 
     init_schema()
+    failed = []
     for ticker in settings.tickers:
-        rows = normalize(fetch_companyfacts(ticker, refresh), ticker)
+        facts = fetch_companyfacts(ticker, refresh)
+
+        checked, bad = check_split_consistency(facts, ticker, find_splits(facts, ticker))
+        split_sized = [b for b in bad if b['kind'] == 'split']
+        print(f'{ticker}: split check: {checked} periods, {len(split_sized)} split-sized mismatches, '
+              f'{len(bad) - len(split_sized)} restatements')
+        for b in split_sized[:5]:
+            print(f'  mismatch {b["metric"]} {b["period"]}: {b["readings"]}')
+        if checked and len(split_sized) / checked > MAX_MISMATCH_RATE:
+            print(f'{ticker}: split adjustment looks wrong, not stored')
+            failed.append(ticker)
+            continue
+
+        rows = normalize(facts, ticker)
         upsert_facts(rows)
         print(f'{ticker}: {len(rows)} facts ({sum(r["derived"] for r in rows)} derived)')
+
+    if failed:
+        raise SystemExit(f'split check failed for: {", ".join(failed)}')
 
 
 if __name__ == '__main__':
