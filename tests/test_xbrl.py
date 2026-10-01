@@ -1,13 +1,24 @@
 from datetime import date
 
-from earnings_rag.xbrl import normalize, find_splits, split_factor
+import pytest
+
+from earnings_rag import xbrl
+from earnings_rag.xbrl import normalize, find_splits, split_factor, check_split_consistency
 
 M = 1_000_000
 
 
-def companyfacts(*concepts):
-    """concepts: (concept, unit, [rows]) tuples, in the shape of the SEC's companyfacts JSON."""
-    return {'facts': {'us-gaap': {c: {'units': {unit: rows}} for c, unit, rows in concepts}}}
+def companyfacts(*concepts, cover=None):
+    """
+    concepts: (concept, unit, [rows]) tuples, in the shape of the SEC's companyfacts JSON.
+    cover: [(filing date, shares outstanding on the cover page)], one per filing.
+    """
+    facts = {'us-gaap': {c: {'units': {unit: rows}} for c, unit, rows in concepts}}
+    if cover:
+        rows = [{'end': filed, 'val': v, 'accn': f'a{i}', 'form': '10-Q', 'filed': filed}
+                for i, (filed, v) in enumerate(cover)]
+        facts['dei'] = {'EntityCommonStockSharesOutstanding': {'units': {'shares': rows}}}
+    return {'facts': facts}
 
 
 def fact(start, end, val, filed='2025-03-01', form='10-K', accn='0001', fy=0, fp='X'):
@@ -121,56 +132,88 @@ def test_instant_facts_without_a_start_date_are_ignored():
 
 
 # --- stock splits ------------------------------------------------------------------------------------------------
+# Detected from the share count on each filing's cover page, which jumps by the split ratio.
 
-SPLIT = 'StockholdersEquityNoteStockSplitConversionRatio1'
-
-
-def ratio(val, end, filed, form='10-Q'):
-    return {'end': end, 'val': val, 'accn': 'x', 'fy': 0, 'fp': 'X', 'form': form, 'filed': filed}
-
-
-# real rows: each split's ratio is first reported in the first filing after it, with unreliable period dates
-NVDA_SPLIT_ROWS = [
-    ratio(4, '2021-06-03', '2021-08-20'), ratio(4, '2021-06-03', '2021-11-22'),
-    ratio(4, '2021-07-19', '2022-03-18', '10-K'), ratio(4, '2021-07-19', '2022-05-27'),
-    ratio(10, '2024-05-31', '2024-08-28'), ratio(10, '2024-05-31', '2024-11-20'),
-    ratio(10, '2024-06-30', '2025-05-28'),
-]
-AAPL_SPLIT_ROWS = [
-    ratio(7, '2014-06-06', '2014-07-23'), ratio(7, '2014-06-06', '2014-10-27', '10-K'),
-    ratio(4, '2020-08-28', '2020-10-30', '10-K'), ratio(4, '2020-08-28', '2021-01-28'),
+# NVIDIA's real pattern: 4:1 effective July 2021 and 10:1 effective June 2024
+NVDA_COVER = [
+    ('2021-02-18', 620 * M), ('2021-05-26', 618 * M),
+    ('2021-08-20', 2_490 * M), ('2021-11-22', 2_500 * M),      # first filing after the 4:1
+    ('2024-02-21', 2_470 * M), ('2024-05-29', 2_460 * M),
+    ('2024-08-28', 24_530 * M), ('2024-11-20', 24_480 * M),    # first filing after the 10:1
 ]
 NVDA_SPLITS = [(date(2021, 8, 20), 4), (date(2024, 8, 28), 10)]
 
 
-def test_each_split_is_one_event_cut_off_at_its_earliest_filing():
-    # NVIDIA's 4:1 appears with two different context dates, 46 days apart; they are still one split
-    assert find_splits(companyfacts((SPLIT, 'pure', NVDA_SPLIT_ROWS))) == NVDA_SPLITS
+def diluted_shares(*readings):
+    """One period's diluted share count as reported by successive filings: (filing date, value) pairs."""
+    return ('WeightedAverageNumberOfDilutedSharesOutstanding', 'shares',
+            [fact('2024-01-01', '2024-12-31', v, filed=filed) for filed, v in readings])
 
 
-def test_same_company_two_splits_are_distinguished_by_ratio():
-    assert find_splits(companyfacts((SPLIT, 'pure', AAPL_SPLIT_ROWS))) == [(date(2014, 7, 23), 7),
-                                                                           (date(2020, 10, 30), 4)]
+def test_cutoff_is_the_first_filing_after_the_cover_page_count_jumps():
+    assert find_splits(companyfacts(cover=NVDA_COVER)) == NVDA_SPLITS
 
 
-def test_same_ratio_years_apart_is_two_splits():
-    rows = [ratio(2, '2015-03-01', '2015-04-01'), ratio(2, '2020-03-01', '2020-04-01')]
-    assert len(find_splits(companyfacts((SPLIT, 'pure', rows)))) == 2
+def test_two_splits_years_apart_are_two_events():
+    tesla = [('2020-07-28', 185 * M), ('2020-10-26', 930 * M), ('2022-07-25', 1_040 * M), ('2022-10-24', 3_100 * M)]
+    assert find_splits(companyfacts(cover=tesla)) == [(date(2020, 10, 26), 5), (date(2022, 10, 24), 3)]
 
 
-def test_no_split_concept_means_no_splits():
-    assert find_splits(companyfacts(('Revenues', 'USD', []))) == []
+def test_split_is_found_without_a_ratio_tag_and_a_late_tag_is_ignored():
+    # Walmart's 3:1: its ratio was only tagged in June, three months after the first post-split filing
+    late_tag = {'end': '2024-02-26', 'val': 3, 'accn': 'x', 'form': '8-K', 'filed': '2024-06-07'}
+    walmart = companyfacts(('StockholdersEquityNoteStockSplitConversionRatio1', 'pure', [late_tag]),
+                           cover=[('2023-11-30', 2_690 * M), ('2024-03-15', 8_050 * M)])
+    assert find_splits(walmart) == [(date(2024, 3, 15), 3)]
+
+
+def test_reverse_split_is_detected_with_a_ratio_below_one():
+    assert find_splits(companyfacts(cover=[('2011-05-05', 29_000 * M), ('2011-08-05', 2_900 * M)])) == \
+        [(date(2011, 8, 5), 0.1)]
+
+
+def test_ordinary_share_count_changes_are_not_splits():
+    # buybacks, issuance, and an acquisition adding 67% (Capital One / Discover) are not split-like
+    cover = [('2025-01-01', 380 * M), ('2025-02-01', 372 * M), ('2025-05-07', 383 * M), ('2025-07-31', 640 * M)]
+    assert find_splits(companyfacts(cover=cover)) == []
+
+
+def test_zero_placeholder_counts_are_ignored():
+    assert find_splits(companyfacts(cover=[('2022-02-11', 0), ('2022-04-28', 50 * M), ('2022-07-27', 51 * M)])) == []
+
+
+def test_acquisition_that_doubles_the_share_count_is_rejected():
+    # the same period read before and after the jump is unchanged, so nothing was restated: not a split
+    cf = companyfacts(diluted_shares(('2025-02-01', 100 * M), ('2025-05-01', 100 * M)),
+                      cover=[('2025-02-01', 100 * M), ('2025-05-01', 200 * M)])
+    assert find_splits(cf) == []
+
+
+def test_split_that_restates_an_old_period_is_accepted():
+    cf = companyfacts(diluted_shares(('2025-02-01', 100 * M), ('2025-05-01', 1_000 * M)),
+                      cover=[('2025-02-01', 100 * M), ('2025-05-01', 1_000 * M)])
+    assert find_splits(cf) == [(date(2025, 5, 1), 10)]
+
+
+def test_split_with_no_restated_period_yet_is_accepted():
+    cf = companyfacts(cover=[('2025-02-01', 100 * M), ('2025-05-01', 1_000 * M)])
+    assert find_splits(cf) == [(date(2025, 5, 1), 10)]
+
+
+def test_overrides_replace_detection(monkeypatch):
+    monkeypatch.setitem(xbrl.SPLIT_OVERRIDES, 'XYZ', [(date(2022, 7, 26), 20)])
+    assert find_splits(companyfacts(cover=NVDA_COVER), 'XYZ') == [(date(2022, 7, 26), 20)]
 
 
 def test_split_factor_applies_only_to_values_filed_before_the_cutoff():
     assert split_factor('2024-08-27', NVDA_SPLITS) == 10       # day before: pre-split basis (only the 10:1 is after)
-    assert split_factor('2024-08-28', NVDA_SPLITS) == 1        # the cutoff filing itself reports the ratio
+    assert split_factor('2024-08-28', NVDA_SPLITS) == 1        # the cutoff filing itself is post-split
     assert split_factor('2021-02-18', NVDA_SPLITS) == 40       # before both splits compounds
     assert split_factor('2022-01-01', NVDA_SPLITS) == 10
 
 
 def nvda_eps(*rows):
-    return companyfacts((SPLIT, 'pure', NVDA_SPLIT_ROWS), ('EarningsPerShareDiluted', 'USD/shares', list(rows)))
+    return companyfacts(('EarningsPerShareDiluted', 'USD/shares', list(rows)), cover=NVDA_COVER)
 
 
 def test_eps_filed_before_a_split_is_rescaled_and_the_factor_recorded():
@@ -202,9 +245,9 @@ def test_eps_before_both_splits_is_divided_by_both():
 
 
 def test_non_per_share_metrics_are_never_split_adjusted():
-    rows = normalize(companyfacts((SPLIT, 'pure', NVDA_SPLIT_ROWS), ('NetIncomeLoss', 'USD', [
+    rows = normalize(companyfacts(('NetIncomeLoss', 'USD', [
         fact('2021-01-31', '2022-01-30', 9_752 * M, filed='2022-03-18'),
-        fact('2022-01-31', '2023-01-29', 4_368 * M, filed='2023-02-24')])), 'NVDA')
+        fact('2022-01-31', '2023-01-29', 4_368 * M, filed='2023-02-24')]), cover=NVDA_COVER), 'NVDA')
     out = by_period(rows, 'net_income')
     assert out[(2022, 'FY')]['value'] == 9_752 * M
     assert out[(2022, 'FY')]['split_factor'] == 1
@@ -215,3 +258,82 @@ def test_company_without_splits_is_unadjusted():
         fact('2023-01-01', '2023-12-31', 12.0, filed='2024-02-20'),
         fact('2024-01-01', '2024-12-31', 14.0, filed='2025-02-20')])), 'COF'), 'eps_diluted')
     assert [rows[(y, 'FY')]['split_factor'] for y in (2023, 2024)] == [1, 1]
+
+
+# --- consistency check -------------------------------------------------------------------------------------------
+
+# NVIDIA FY2022 EPS as read in two filings: post-4:1 / pre-10:1, then restated after the 10:1 (0.385 rounds to 0.39)
+EPS_FY2022 = [fact('2021-01-31', '2022-01-30', 3.85, filed='2024-02-21'),
+              fact('2021-01-31', '2022-01-30', 0.39, filed='2025-02-26')]
+
+
+def test_consistency_check_passes_when_the_cutoffs_are_right():
+    cf = companyfacts(('EarningsPerShareDiluted', 'USD/shares', EPS_FY2022), cover=NVDA_COVER)
+    assert check_split_consistency(cf, 'NVDA', NVDA_SPLITS) == (1, [])
+
+
+def test_consistency_check_flags_a_cutoff_that_is_one_filing_late():
+    cf = companyfacts(('EarningsPerShareDiluted', 'USD/shares', EPS_FY2022), cover=NVDA_COVER)
+    late = [(date(2021, 8, 20), 4), (date(2025, 3, 1), 10)]   # the 10:1 cutoff lands after the restated filing
+    checked, bad = check_split_consistency(cf, 'NVDA', late)
+    assert checked == 1 and len(bad) == 1
+
+
+def test_periods_with_a_single_reading_are_not_checked():
+    cf = companyfacts(('EarningsPerShareDiluted', 'USD/shares',
+                       [fact('2021-01-31', '2022-01-30', 3.85, filed='2024-02-21')]), cover=NVDA_COVER)
+    assert check_split_consistency(cf, 'NVDA', NVDA_SPLITS) == (0, [])
+
+
+def test_a_wrong_cutoff_is_classified_as_split_sized():
+    cf = companyfacts(('EarningsPerShareDiluted', 'USD/shares', EPS_FY2022), cover=NVDA_COVER)
+    late = [(date(2021, 8, 20), 4), (date(2025, 3, 1), 10)]
+    assert check_split_consistency(cf, 'NVDA', late)[1][0]['kind'] == 'split'
+
+
+def test_a_genuine_restatement_is_reported_but_not_split_sized():
+    # Tesla restated Q1 2024 EPS from 0.34 to 0.41 for an accounting change; that must not look like a bad cutoff
+    cf = companyfacts(('EarningsPerShareDiluted', 'USD/shares', [
+        fact('2024-01-01', '2024-03-31', 0.34, filed='2024-04-24', form='10-Q'),
+        fact('2024-01-01', '2024-03-31', 0.41, filed='2025-04-23', form='10-Q')]))
+    checked, bad = check_split_consistency(cf, 'NVDA', [])
+    assert checked == 1 and [b['kind'] for b in bad] == ['restated']
+
+
+def test_reverse_split_rounding_is_not_a_mismatch():
+    # Citigroup 1:10 reverse split: -0.80 as originally reported becomes -8.0, against a restated -7.99.
+    # Scaling by 10 also scales the original reading's 0.005 rounding error to 0.05.
+    cf = companyfacts(('EarningsPerShareDiluted', 'USD/shares', [
+        fact('2021-01-01', '2021-12-31', -0.8, filed='2023-02-25'),
+        fact('2021-01-01', '2021-12-31', -7.99, filed='2024-02-24')]))
+    assert check_split_consistency(cf, 'NVDA', [(date(2023, 8, 5), 0.1)]) == (1, [])
+
+
+# --- ingestion safety net ----------------------------------------------------------------------------------------
+
+def stub_ingest(monkeypatch, cf):
+    """Run ingest_facts for one ticker against canned facts and a fake store; returns what would be stored."""
+    stored = []
+    monkeypatch.setattr(xbrl.settings, 'tickers', ['NVDA'])
+    monkeypatch.setattr(xbrl, 'fetch_companyfacts', lambda ticker, refresh=False: cf)
+    monkeypatch.setattr('earnings_rag.store.init_schema', lambda: None)
+    monkeypatch.setattr('earnings_rag.store.upsert_facts', stored.append)
+    return stored
+
+
+def test_ingest_refuses_to_store_a_ticker_whose_split_check_fails(monkeypatch):
+    # a split nothing detected (a multi-class issuer): the same period reads 20x apart in two filings
+    cf = companyfacts(('EarningsPerShareDiluted', 'USD/shares', [
+        fact('2021-01-01', '2021-12-31', 58.0, filed='2022-02-02'),
+        fact('2021-01-01', '2021-12-31', 2.9, filed='2023-02-03')]))
+    stored = stub_ingest(monkeypatch, cf)
+    with pytest.raises(SystemExit, match='NVDA'):
+        xbrl.ingest_facts()
+    assert stored == []
+
+
+def test_ingest_stores_a_ticker_whose_split_check_passes(monkeypatch):
+    stored = stub_ingest(monkeypatch, companyfacts(('EarningsPerShareDiluted', 'USD/shares', EPS_FY2022),
+                                                   cover=NVDA_COVER))
+    xbrl.ingest_facts()
+    assert len(stored) == 1 and stored[0]
