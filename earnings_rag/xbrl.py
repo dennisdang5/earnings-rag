@@ -10,6 +10,7 @@ MIN_FISCAL_YEAR = 2020
 # metric -> the XBRL concept each company uses for it. Hand-verified against the real data: the "standard" concept
 # is not always right (Capital One's RevenueFromContractWithCustomer... is only its fee revenue, ~1/7 of Revenues).
 # additive=False for per-share values: share counts change, so FY EPS minus 9-month EPS is not Q4 EPS.
+# per_share=True values are rescaled to today's share count (see find_splits).
 METRICS = {
     'revenue': {
         'concepts': {'NVDA': 'Revenues', 'COF': 'Revenues',
@@ -20,7 +21,7 @@ METRICS = {
         'unit': 'USD', 'additive': True},
     'eps_diluted': {
         'concepts': {t: 'EarningsPerShareDiluted' for t in ('NVDA', 'AAPL', 'COF')},
-        'unit': 'USD/shares', 'additive': False},
+        'unit': 'USD/shares', 'additive': False, 'per_share': True},
     'operating_cash_flow': {
         'concepts': {t: 'NetCashProvidedByUsedInOperatingActivities' for t in ('NVDA', 'AAPL', 'COF')},
         'unit': 'USD', 'additive': True},
@@ -40,6 +41,9 @@ METRICS = {
         'concepts': {'COF': 'NoninterestIncome'},
         'unit': 'USD', 'additive': True},
 }
+
+SPLIT_CONCEPT = 'StockholdersEquityNoteStockSplitConversionRatio1'
+SPLIT_CLUSTER_DAYS = 180
 
 PERIOD_ORDER = {'Q1': 1, 'Q2': 2, 'Q3': 3, 'Q4': 4, 'FY': 5}
 
@@ -91,8 +95,8 @@ def _latest_unique(rows: list[dict]) -> list[dict]:
     Each value is repeated in later filings as a prior-period comparison. Keep one row per period: the most
     recently filed, so restatements win. Instant facts have no 'start' and are skipped.
 
-    Caution for per-share values: a period is only re-presented for about two years, so older periods keep the
-    share basis of their original filing and are NOT reliably split-adjusted (see DECISIONS.md).
+    Per-share values are the exception to "latest wins": a period is only re-presented for about two years, so
+    older ones keep their original share basis. They are rescaled in emit() using find_splits().
     """
     best = {}
     for r in rows:
@@ -119,7 +123,40 @@ def _locate(start: date, end: date, years: list[tuple]) -> tuple[int, date] | No
     return None
 
 
-def _normalize_metric(rows: list[dict], ticker: str, metric: str, concept: str, spec: dict) -> list[dict]:
+def find_splits(companyfacts: dict) -> list[tuple[date, float]]:
+    """
+    Stock splits as (cutoff, ratio), oldest first. The ratio comes from XBRL, but the dates attached to it are
+    unusable as effective dates (NVIDIA's 10:1 carries period ends of 2024-05-31 and 2024-06-30). What is reliable:
+    the first filing to report a ratio is the first one filed after the split. So the cutoff is the earliest
+    filing date in the cluster, and a value filed before it is on the old share basis.
+
+    Rows for one split are clustered by ratio and nearby 'end' dates, since the same ratio can recur years later.
+    """
+    rows = companyfacts['facts']['us-gaap'].get(SPLIT_CONCEPT, {}).get('units', {}).get('pure', [])
+    rows = sorted(rows, key=lambda r: (r['val'], r['end']))
+
+    clusters: list[list[dict]] = []
+    for r in rows:
+        prev = clusters[-1][-1] if clusters else None
+        gap = (date.fromisoformat(r['end']) - date.fromisoformat(prev['end'])).days if prev else None
+        if prev is None or prev['val'] != r['val'] or gap > SPLIT_CLUSTER_DAYS:
+            clusters.append([])
+        clusters[-1].append(r)
+
+    return sorted((date.fromisoformat(min(r['filed'] for r in c)), c[0]['val']) for c in clusters)
+
+
+def split_factor(filed: str, splits: list[tuple[date, float]]) -> float:
+    """Product of the ratios of every split after this value's filing date: its per-share value is that much too high."""
+    factor = 1
+    for cutoff, ratio in splits:
+        if date.fromisoformat(filed) < cutoff:  # a filing on the cutoff date reports the ratio, so is post-split
+            factor *= ratio
+    return factor
+
+
+def _normalize_metric(rows: list[dict], ticker: str, metric: str, concept: str, spec: dict,
+                      splits: list[tuple[date, float]]) -> list[dict]:
     rows = _latest_unique(rows)
     annual = {(r['start'], r['end']) for r in rows if _classify(_days(r)) == 'FY'}
     if not annual:
@@ -150,10 +187,13 @@ def _normalize_metric(rows: list[dict], ticker: str, metric: str, concept: str, 
         by_year.setdefault(fy, {})[label] = r
 
     def emit(fy, period, src, value, start, end, derived):
+        factor = split_factor(src['filed'], splits) if spec.get('per_share') else 1
+        if factor != 1:
+            value = round(value / factor, 6)
         return {'ticker': ticker, 'metric': metric, 'segment': '', 'concept': concept,
                 'fiscal_year': fy, 'fiscal_period': period, 'period_start': start, 'period_end': end,
                 'value': value, 'unit': spec['unit'], 'derived': derived,
-                'form': src['form'], 'accession': src['accn'], 'filed': src['filed']}
+                'form': src['form'], 'accession': src['accn'], 'filed': src['filed'], 'split_factor': factor}
 
     out = []
     for fy, cum in by_year.items():
@@ -179,12 +219,14 @@ def normalize(companyfacts: dict, ticker: str) -> list[dict]:
     derived by subtraction and flagged derived=True. Pure function: no network, no database.
     """
     gaap = companyfacts['facts']['us-gaap']
+    splits = find_splits(companyfacts)
     out = []
     for metric, spec in METRICS.items():
         concept = spec['concepts'].get(ticker)
         if concept is None or concept not in gaap:
             continue
-        out.extend(_normalize_metric(gaap[concept]['units'].get(spec['unit'], []), ticker, metric, concept, spec))
+        out.extend(_normalize_metric(gaap[concept]['units'].get(spec['unit'], []), ticker, metric, concept, spec,
+                                       splits))
     out.sort(key=lambda r: (r['metric'], r['fiscal_year'], PERIOD_ORDER[r['fiscal_period']]))
     return out
 

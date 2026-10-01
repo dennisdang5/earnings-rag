@@ -31,8 +31,12 @@ CREATE TABLE IF NOT EXISTS facts(
     form    TEXT    NOT NULL,
     accession   TEXT    NOT NULL,
     filed   DATE    NOT NULL,
+    split_factor    DOUBLE PRECISION NOT NULL DEFAULT 1,
     PRIMARY KEY (ticker, metric, segment, fiscal_year, fiscal_period)
     );
+
+-- value * split_factor is the as-reported figure. This line migrates databases created before the column existed.
+ALTER TABLE facts ADD COLUMN IF NOT EXISTS split_factor DOUBLE PRECISION NOT NULL DEFAULT 1;
 """
 
 def connect() -> psycopg.Connection:
@@ -154,7 +158,7 @@ def get_chunk(chunk_id: str) -> dict | None:
     }
 
 FACT_COLUMNS = ['ticker', 'metric', 'segment', 'fiscal_year', 'fiscal_period', 'concept', 'unit', 'value',
-                'period_start', 'period_end', 'derived', 'form', 'accession', 'filed']
+                'period_start', 'period_end', 'derived', 'form', 'accession', 'filed', 'split_factor']
 
 def upsert_facts(rows: list[dict]) -> None:
     sql = f"""
