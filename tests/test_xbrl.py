@@ -244,6 +244,33 @@ def test_eps_before_both_splits_is_divided_by_both():
     assert rows[(2021, 'FY')]['split_factor'] == 40
 
 
+def test_split_adjusted_eps_keeps_the_precision_of_the_pre_split_filing():
+    rows = by_period(normalize(nvda_eps(
+        fact('2022-01-31', '2023-01-29', 1.74, filed='2024-02-21'),   # pre-split: 1.74 / 10 = 0.174
+        fact('2022-01-31', '2023-01-29', 0.17, filed='2025-02-26'),   # same figure, rounded after the split
+    ), 'NVDA'), 'eps_diluted')
+    assert rows[(2023, 'FY')]['value'] == 0.174
+    assert rows[(2023, 'FY')]['split_factor'] == 10
+    assert rows[(2023, 'FY')]['filed'] == '2024-02-21'   # provenance points at the filing the value came from
+
+
+def test_a_restated_eps_is_not_replaced_by_the_older_more_precise_reading():
+    rows = by_period(normalize(nvda_eps(
+        fact('2022-01-31', '2023-01-29', 1.74, filed='2024-02-21'),
+        fact('2022-01-31', '2023-01-29', 0.20, filed='2025-02-26'),   # restated: 0.174 is 0.026 away, beyond rounding
+    ), 'NVDA'), 'eps_diluted')
+    assert rows[(2023, 'FY')]['value'] == 0.20
+    assert rows[(2023, 'FY')]['split_factor'] == 1
+
+
+def test_eps_without_a_split_between_readings_uses_the_latest():
+    rows = by_period(normalize(companyfacts(('EarningsPerShareDiluted', 'USD/shares', [
+        fact('2023-01-01', '2023-12-31', 11.95, filed='2024-02-23'),
+        fact('2023-01-01', '2023-12-31', 11.95, filed='2025-02-20')])), 'COF'), 'eps_diluted')
+    assert rows[(2023, 'FY')]['value'] == 11.95
+    assert rows[(2023, 'FY')]['filed'] == '2025-02-20'
+
+
 def test_non_per_share_metrics_are_never_split_adjusted():
     rows = normalize(companyfacts(('NetIncomeLoss', 'USD', [
         fact('2021-01-31', '2022-01-30', 9_752 * M, filed='2022-03-18'),
