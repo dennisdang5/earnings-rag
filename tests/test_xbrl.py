@@ -365,3 +365,31 @@ def test_ingest_stores_a_ticker_whose_split_check_passes(monkeypatch):
                                                    cover=NVDA_COVER))
     xbrl.ingest_facts()
     assert len(stored) == 1 and stored[0]
+
+
+# --- balances (values on a date) ----------------------------------------------------------------------------------
+
+def instant(end, val, filed, form='10-Q', accn='b'):
+    return {'end': end, 'val': val, 'accn': accn, 'form': form, 'filed': filed}
+
+
+def cof_deposits_facts(*rows):
+    flow = [fact('2023-01-01', '2023-12-31', 1), fact('2024-01-01', '2024-12-31', 2)]
+    return companyfacts(('Revenues', 'USD', flow), ('Deposits', 'USD', list(rows)))
+
+
+def test_balance_is_labelled_by_its_date_and_never_derived():
+    rows = normalize(cof_deposits_facts(
+        instant('2024-03-31', 351, '2024-05-01'), instant('2024-09-30', 353, '2024-11-01'),
+        instant('2024-12-31', 362, '2025-02-20', form='10-K'),
+        instant('2024-12-31', 362, '2025-05-01'),          # repeated as a comparison in a later 10-Q
+        instant('2024-05-15', 999, '2024-08-01')), 'COF')   # not a quarter end
+    out = by_period(rows, 'deposits')
+    assert {k: r['value'] for k, r in out.items()} == {(2024, 'Q1'): 351, (2024, 'Q3'): 353, (2024, 'FY'): 362}
+    assert not any(r['derived'] for r in out.values())          # no Q2, no Q4: balances cannot be subtracted
+    assert out[(2024, 'FY')]['period_start'] == out[(2024, 'FY')]['period_end'] == '2024-12-31'
+
+
+def test_period_after_the_last_annual_fact_gets_its_balance_in_the_year_in_progress():
+    out = by_period(normalize(cof_deposits_facts(instant('2025-03-31', 367, '2025-05-01')), 'COF'), 'deposits')
+    assert out[(2025, 'Q1')]['value'] == 367

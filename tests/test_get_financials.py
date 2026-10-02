@@ -18,7 +18,7 @@ def row(**over):
     return {**base, **over}
 
 
-def call(monkeypatch, rows=(), years=(2020, 2027), **args):
+def call(monkeypatch, rows=(), years=(2020, 2027), breakdowns=(), **args):
     seen = {}
 
     def fake_get_facts(ticker, metric, fiscal_year, fiscal_period, limit):
@@ -27,6 +27,7 @@ def call(monkeypatch, rows=(), years=(2020, 2027), **args):
 
     monkeypatch.setattr(tools_module, 'get_facts', fake_get_facts)
     monkeypatch.setattr(tools_module, 'fact_years', lambda t, m: years)
+    monkeypatch.setattr(tools_module, 'available_breakdowns', lambda t, corporate: list(breakdowns))
     return json.loads(GET_FINANCIALS.call(json.dumps(args))), seen
 
 
@@ -161,3 +162,23 @@ def test_breakdown_result_names_the_slices_on_the_other_axes(monkeypatch):
                             company='NVDA', metric='revenue', breakdown='segment')
     assert 'product: Data Center, Gaming' in out['note']
     assert 'geography' not in out['note'] and 'segment:' not in out['note']
+
+
+def test_balance_rows_say_they_are_a_snapshot_on_a_date():
+    r = fact_result(row(metric='deposits', fiscal_period='FY', period_start=date(2025, 12, 31),
+                        period_end=date(2025, 12, 31), value=475_771e6))
+    assert r['balance'] is True and r['as_of'] == '2025-12-31' and r['value'] == 475_771
+    assert 'balance' not in fact_result(row())
+
+
+def test_a_balance_has_no_q4_the_year_end_is_fy(monkeypatch):
+    out, _ = call(monkeypatch, company='COF', metric='deposits', period='Q4')
+    assert 'fiscal year end is period FY' in out['error']
+
+
+def test_plain_result_lists_the_breakdowns_the_company_has(monkeypatch):
+    out, _ = call(monkeypatch, rows=[row()], company='NVDA', metric='gross_profit',
+                  breakdowns=[('cost_of_revenue', 'product', 2020, 2025), ('cost_of_revenue', 'segment', 2023, 2025),
+                              ('revenue', 'product', 2020, 2025)])
+    assert 'cost_of_revenue by product, segment; revenue by product' in out['note']
+    assert 'note' not in call(monkeypatch, rows=[row()], company='NVDA', metric='revenue')[0]  # none stored: no note
