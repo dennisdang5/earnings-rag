@@ -65,7 +65,7 @@ python eval/run_eval.py --refusals                  # generation check, calls th
 **Next, in order, each its own branch/PR after the previous one merges:**
 - (Done: `agent/eps-precision` and `agent/get-financials`, the latter awaiting merge. EPS takes the most precise reported reading across splits and is never computed from net income ÷ shares; see `DECISIONS.md`.)
 - (Done: `agent/xbrl-segments`. Done: `agent/segments-tool`, the `breakdown` argument; see `DECISIONS.md`.)
-- (Done, awaiting merge: `agent/segment-metrics`: cost of revenue, pre-tax income, provision, non-interest expense, loans and deposits, incl. balances.)
+- (Done: `agent/segment-metrics`: cost of revenue, pre-tax income, provision, non-interest expense, loans and deposits, incl. balances.)
 - **NEXT: `agent/metric-resolver`, design note first.** `METRICS` is hand-verified per company and will not scale to many tickers. Planned: candidate concepts per metric, chosen per company by accounting identities (revenue >= its parts, gross profit = revenue - cost, pre-tax - tax = net income) with a printed override table; it must reproduce today's NVDA/AAPL/COF map exactly. See `DECISIONS.md` (segment-metrics entry).
 - Then: 10-Q ingestion (a `form` column, fiscal quarter mapping, enabling `period`/`form` filters in `store.search`), `compare`, the agent eval, and `/agent/stream` plus UI.
 
