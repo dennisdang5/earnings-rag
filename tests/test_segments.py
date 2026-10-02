@@ -1,4 +1,8 @@
-from earnings_rag.segments import (parse_inline, member_name, normalize_segments, cross_check, sum_check, CORPORATE)
+from datetime import date
+
+from earnings_rag import segments
+from earnings_rag.segments import (parse_inline, member_name, normalize_segments, cross_check, sum_check,
+                                   add_corporate_remainder, CORPORATE)
 
 M = 1_000_000
 
@@ -110,7 +114,10 @@ def test_latest_filing_wins_and_cites_its_own_accession():
 
 
 def row(metric, axis, segment, value, fy=2025):
-    return {'metric': metric, 'axis': axis, 'segment': segment, 'value': value * M, 'fiscal_year': fy}
+    return {'metric': metric, 'axis': axis, 'segment': segment, 'value': value * M, 'fiscal_year': fy,
+            'concept': 'X', 'period_start': '2024-01-29', 'period_end': '2025-01-26', 'derived': False, 'form': '10-K',
+            'accession': 'seg', 'filed': '2025-02-26', 'unit': 'USD', 'ticker': 'NVDA', 'fiscal_period': 'FY',
+            'split_factor': 1}
 
 
 def test_sum_check_handles_a_hierarchy_and_flags_a_breakdown_that_does_not_add_up():
@@ -121,3 +128,60 @@ def test_sum_check_handles_a_hierarchy_and_flags_a_breakdown_that_does_not_add_u
     assert sum_check(products, total) == (1, [])
     broken = [row('revenue', 'geography', 'US', 61_257), row('revenue', 'geography', 'TW', 20_573)]
     assert sum_check(broken, total) == (1, [('revenue', 'geography', 2025)])
+
+
+TOTAL = {('operating_income', 2025): {'value': 130_387 * M, 'concept': 'OperatingIncomeLoss', 'form': '10-K',
+                                      'accession': 'total-acc', 'filed': '2026-02-25', 'period_start': date(2024, 1, 29),
+                                      'period_end': date(2025, 1, 26)}}
+
+
+def test_missing_corporate_item_is_derived_as_total_minus_segments():
+    rows = [row('operating_income', 'segment', 'Compute and Networking', 130_141),
+            row('operating_income', 'segment', 'Graphics', 9_156)]
+    [r] = add_corporate_remainder(rows, TOTAL)
+    assert r['segment'] == CORPORATE and r['axis'] == 'segment'
+    assert r['value'] == -8_910 * M and r['derived']
+    assert r['accession'] == 'total-acc'            # cites the filing that reported the total
+    assert sum_check(rows + [r], {('operating_income', 2025): 130_387 * M}) == (1, [('operating_income', 'segment', 2025)])
+
+
+def test_no_remainder_when_corporate_is_reported_or_the_segments_already_add_up():
+    reported = [row('operating_income', 'segment', 'Compute and Networking', 138_841),
+                row('operating_income', 'segment', CORPORATE, -8_454)]
+    assert add_corporate_remainder(reported, TOTAL) == []
+    adds_up = [row('operating_income', 'segment', 'A', 100_000), row('operating_income', 'segment', 'B', 30_387)]
+    assert add_corporate_remainder(adds_up, TOTAL) == []
+
+
+def test_no_remainder_for_overlapping_axes_or_years_without_a_consolidated_total():
+    overlapping = [row('operating_income', 'product', 'Data Center', 1)]
+    assert add_corporate_remainder(overlapping, TOTAL) == []
+    other_year = [row('operating_income', 'segment', 'A', 1, fy=2030)]
+    assert add_corporate_remainder(other_year, TOTAL) == []
+
+
+def test_ingest_replaces_the_tickers_breakdown_rows_including_the_derived_remainder(monkeypatch, tmp_path):
+    (tmp_path / 'NVDA').mkdir()
+    html = ixbrl({'t': (*FY, []), 'a': (*FY, [(ITEMS, 'us-gaap:OperatingSegmentsMember'),
+                                              (SEGMENT, 'nvda:ComputeAndNetworkingSegmentMember')])},
+                 [('OperatingIncomeLoss', 't', '90', 'scale="6"'), ('OperatingIncomeLoss', 'a', '100', 'scale="6"')])
+    (tmp_path / 'NVDA' / '2025-01-26.html').write_bytes(html)
+    facts = {'facts': {'us-gaap': {'OperatingIncomeLoss': {'units': {'USD': [api(90 * M)]}}}}}
+
+    stored = {}
+    monkeypatch.setattr(segments, 'settings', type('S', (), {'raw_dir': tmp_path})())
+    monkeypatch.setattr('earnings_rag.store.replace_segment_facts', lambda t, rows: stored.update({t: rows}))
+    assert segments.ingest_segments('NVDA', facts)
+    assert [(r['segment'], r['value'] / M, r['derived']) for r in stored['NVDA']] == [
+        ('Compute and Networking', 100, False), (CORPORATE, -10, True)]
+
+
+def test_ingest_stores_nothing_when_the_parser_disagrees_with_the_api(monkeypatch, tmp_path):
+    (tmp_path / 'NVDA').mkdir()
+    (tmp_path / 'NVDA' / '2025-01-26.html').write_bytes(ixbrl({'t': (*FY, [])}, [('OperatingIncomeLoss', 't', '90', 'scale="3"')]))
+    facts = {'facts': {'us-gaap': {'OperatingIncomeLoss': {'units': {'USD': [api(90 * M)]}}}}}
+    stored = []
+    monkeypatch.setattr(segments, 'settings', type('S', (), {'raw_dir': tmp_path})())
+    monkeypatch.setattr('earnings_rag.store.replace_segment_facts', lambda t, rows: stored.append(rows))
+    assert not segments.ingest_segments('NVDA', facts)
+    assert stored == []

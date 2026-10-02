@@ -172,16 +172,29 @@ def get_chunk(chunk_id: str) -> dict | None:
 FACT_COLUMNS = ['ticker', 'metric', 'segment', 'axis', 'fiscal_year', 'fiscal_period', 'concept', 'unit', 'value',
                 'period_start', 'period_end', 'derived', 'form', 'accession', 'filed', 'split_factor']
 
+UPSERT_FACTS_SQL = f"""
+    INSERT INTO facts ({', '.join(FACT_COLUMNS)})
+    VALUES ({', '.join(['%s'] * len(FACT_COLUMNS))})
+    ON CONFLICT (ticker, metric, axis, segment, fiscal_year, fiscal_period) DO UPDATE SET
+        {', '.join(f'{c} = EXCLUDED.{c}' for c in FACT_COLUMNS[6:])}
+"""
+
 def upsert_facts(rows: list[dict]) -> None:
-    sql = f"""
-        INSERT INTO facts ({', '.join(FACT_COLUMNS)})
-        VALUES ({', '.join(['%s'] * len(FACT_COLUMNS))})
-        ON CONFLICT (ticker, metric, axis, segment, fiscal_year, fiscal_period) DO UPDATE SET
-            {', '.join(f'{c} = EXCLUDED.{c}' for c in FACT_COLUMNS[6:])}
+    with connect() as conn:
+        with conn.cursor() as cur:
+            cur.executemany(UPSERT_FACTS_SQL, [tuple(r[c] for c in FACT_COLUMNS) for r in rows])
+        conn.commit()
+
+def replace_segment_facts(ticker: str, rows: list[dict]) -> None:
+    """
+    Swap a ticker's breakdown rows (axis != '') for these, in one transaction. An upsert alone leaves stale rows behind
+    when the parser stops producing one (a corrected rule, a dropped bad fact), so the old set is deleted first.
+    Consolidated rows are not touched.
     """
     with connect() as conn:
         with conn.cursor() as cur:
-            cur.executemany(sql, [tuple(r[c] for c in FACT_COLUMNS) for r in rows])
+            cur.execute("DELETE FROM facts WHERE ticker = %s AND axis <> ''", (ticker,))
+            cur.executemany(UPSERT_FACTS_SQL, [tuple(r[c] for c in FACT_COLUMNS) for r in rows])
         conn.commit()
 
 def get_facts(ticker: str, metric: str, fiscal_year: int | None = None, fiscal_period: str | None = None,

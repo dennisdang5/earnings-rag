@@ -188,7 +188,8 @@ def sum_check(rows: list[dict], consolidated: dict[tuple, float]) -> tuple[int, 
     """
     groups: dict[tuple, list[int]] = {}
     for r in rows:
-        groups.setdefault((r['metric'], r['axis'], r['fiscal_year']), []).append(round(r['value'] / 1e6))
+        if not r['derived']:  # a remainder reconciles by construction, so it proves nothing
+            groups.setdefault((r['metric'], r['axis'], r['fiscal_year']), []).append(round(r['value'] / 1e6))
 
     checked, failed = 0, []
     for (metric, axis, fy), values in groups.items():
@@ -204,10 +205,39 @@ def sum_check(rows: list[dict], consolidated: dict[tuple, float]) -> tuple[int, 
     return checked, failed
 
 
+def add_corporate_remainder(rows: list[dict], consolidated: dict[tuple, dict]) -> list[dict]:
+    """
+    Companies keep some costs out of their segments (unallocated stock compensation and R&D), and not every filing tags
+    that reconciling line: NVIDIA FY2026 operating income has none, Apple's pre-2023 filings tag it only piecewise. For a
+    business-segment breakdown with no reported corporate row, the remainder is the consolidated total minus the
+    segments, both figures the company reported. Stored as 'Corporate and other' with derived=True, the same flag as a
+    derived Q4. Business segments only: product and geography members overlap, so a remainder there means nothing.
+    consolidated maps (metric, fiscal_year) -> the consolidated FY facts row the remainder is measured against.
+    """
+    groups: dict[tuple, list[dict]] = {}
+    for r in rows:
+        if r['axis'] == 'segment':
+            groups.setdefault((r['metric'], r['fiscal_year']), []).append(r)
+
+    out = []
+    for key, members in groups.items():
+        total = consolidated.get(key)
+        if total is None or any(m['segment'] == CORPORATE for m in members):
+            continue
+        remainder = total['value'] - sum(m['value'] for m in members)
+        if abs(remainder) <= SUM_TOLERANCE_M * 1e6:
+            continue  # the segments already add up
+        out.append({**members[0], 'segment': CORPORATE, 'value': remainder, 'concept': total['concept'],
+                    'period_start': str(total['period_start']), 'period_end': str(total['period_end']),
+                    'derived': True, 'form': total['form'], 'accession': total['accession'],
+                    'filed': str(total['filed'])})
+    return out
+
+
 def ingest_segments(ticker: str, companyfacts: dict) -> bool:
     """Parse the cached 10-Ks, validate, store. Returns False (storing nothing) if the parser disagrees with the API."""
     from earnings_rag import xbrl
-    from earnings_rag.store import upsert_facts
+    from earnings_rag.store import replace_segment_facts
 
     parsed = {p.stem: parse_inline(p.read_bytes(), ticker) for p in sorted((settings.raw_dir / ticker).glob('*.html'))}
     checked, bad = cross_check(parsed, companyfacts, ticker)
@@ -219,12 +249,16 @@ def ingest_segments(ticker: str, companyfacts: dict) -> bool:
         return False
 
     rows = normalize_segments(parsed, companyfacts, ticker)
-    consolidated = {(r['metric'], r['fiscal_year']): r['value'] for r in xbrl.normalize(companyfacts, ticker)
-                    if r['fiscal_period'] == 'FY'}
-    axes_checked, failed = sum_check(rows, consolidated)
+    totals = {(r['metric'], r['fiscal_year']): r for r in xbrl.normalize(companyfacts, ticker)
+              if r['fiscal_period'] == 'FY'}
+    axes_checked, failed = sum_check(rows, {k: r['value'] for k, r in totals.items()})
     print(f'{ticker}: {len(rows)} segment facts, {axes_checked - len(failed)}/{axes_checked} breakdowns reconcile '
           f'to the total')
     for metric, axis, fy in failed:
         print(f'  does not reconcile: {metric} by {axis} FY{fy}')
-    upsert_facts(rows)
+
+    derived = add_corporate_remainder(rows, totals)
+    for r in derived:
+        print(f'  derived {CORPORATE} {r["metric"]} FY{r["fiscal_year"]}: {r["value"] / 1e6:,.0f}M')
+    replace_segment_facts(ticker, rows + derived)
     return True
