@@ -225,6 +225,47 @@ def fact_years(ticker: str, metric: str, segment: str = '') -> tuple[int, int] |
                            'WHERE ticker = %s AND metric = %s AND segment = %s', (ticker, metric, segment)).fetchone()
     return None if row[0] is None else (row[0], row[1])
 
+def get_breakdown(ticker: str, metric: str, axis: str, fiscal_year: int | None = None, years: int = 2) -> list[dict]:
+    """Every slice on one axis, for the given fiscal year or the latest `years` years. Latest first, largest first."""
+    sql = f'SELECT {", ".join(FACT_COLUMNS)} FROM facts WHERE ticker = %s AND metric = %s AND axis = %s'
+    params: list = [ticker, metric, axis]
+    if fiscal_year is not None:
+        sql += ' AND fiscal_year = %s'
+        params.append(fiscal_year)
+    else:
+        sql += (' AND fiscal_year IN (SELECT DISTINCT fiscal_year FROM facts WHERE ticker = %s AND metric = %s'
+                ' AND axis = %s ORDER BY fiscal_year DESC LIMIT %s)')
+        params += [ticker, metric, axis, years]
+    sql += ' ORDER BY fiscal_year DESC, value DESC'
+    with connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, params)
+            return [dict(zip(FACT_COLUMNS, row)) for row in cur.fetchall()]
+
+def available_breakdowns(ticker: str, corporate: str) -> list[tuple[str, str, int, int]]:
+    """
+    (metric, axis, first year, last year) for each breakdown with at least two real slices. A lone corporate row is
+    not a breakdown: Apple's R&D has only "Corporate and other", equal to the whole figure, because it is unallocated.
+    """
+    with connect() as conn:
+        return conn.execute(
+            "SELECT metric, axis, min(fiscal_year), max(fiscal_year) FROM facts "
+            "WHERE ticker = %s AND axis <> '' GROUP BY metric, axis "
+            "HAVING count(DISTINCT segment) FILTER (WHERE segment <> %s) >= 2 ORDER BY metric, axis",
+            (ticker, corporate)).fetchall()
+
+def breakdown_names(ticker: str, metric: str) -> dict[str, list[str]]:
+    """axis -> the slice names in its latest year, largest first. Tells the model which axis a name like Data Center is on."""
+    with connect() as conn:
+        rows = conn.execute(
+            "SELECT axis, segment FROM facts f WHERE ticker = %s AND metric = %s AND axis <> '' AND fiscal_year = "
+            "(SELECT max(fiscal_year) FROM facts WHERE ticker = f.ticker AND metric = f.metric AND axis = f.axis) "
+            "ORDER BY axis, value DESC", (ticker, metric)).fetchall()
+    names: dict[str, list[str]] = {}
+    for axis, segment in rows:
+        names.setdefault(axis, []).append(segment)
+    return names
+
 def init_schema() -> None:
     with connect() as conn:
         conn.execute(SCHEMA_SQL)

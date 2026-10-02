@@ -139,23 +139,30 @@ def _filing_for(companyfacts: dict, ticker: str, report_date: str) -> dict | Non
 
 def normalize_segments(parsed: dict[str, list[dict]], companyfacts: dict, ticker: str) -> list[dict]:
     """
-    parsed: {report date: parse_inline rows} per 10-K. One facts row per (metric, axis, segment, fiscal year) for the
-    breakdown rows; the latest filing wins, as in xbrl.normalize, so a reorganized prior year takes the newest figures.
+    parsed: {report date: parse_inline rows} per 10-K. One facts row per (metric, axis, segment, fiscal year).
+
+    The latest filing wins for a whole breakdown, not slice by slice. NVIDIA's FY2026 10-K re-presented FY2025 revenue
+    by geography on a new basis and dropped Singapore; taking each slice from its latest filing kept the old Singapore
+    row next to the new US/China/Taiwan rows, and the year summed to 154,181 against a 130,497 total. So each
+    (metric, axis, fiscal year) comes entirely from the latest filing that reports it.
     """
-    out = {}
+    groups: dict[tuple, list[dict]] = {}
     for report_date in sorted(parsed):
         filing = _filing_for(companyfacts, ticker, report_date)
         if filing is None:
             continue
+        this_filing: dict[tuple, list[dict]] = {}
         for f in parsed[report_date]:
             if not f['axis']:
                 continue
-            unit = METRICS[f['metric']]['unit']
-            out[(f['metric'], f['axis'], f['segment'], f['period_end'][:4])] = {
-                **f, 'ticker': ticker, 'fiscal_year': int(f['period_end'][:4]), 'fiscal_period': 'FY',
-                'unit': unit, 'derived': False, 'form': filing['form'], 'accession': filing['accn'],
-                'filed': filing['filed'], 'split_factor': 1}
-    return sorted(out.values(), key=lambda r: (r['metric'], r['axis'], r['fiscal_year'], r['segment']))
+            fy = int(f['period_end'][:4])
+            this_filing.setdefault((f['metric'], f['axis'], fy), []).append({
+                **f, 'ticker': ticker, 'fiscal_year': fy, 'fiscal_period': 'FY',
+                'unit': METRICS[f['metric']]['unit'], 'derived': False, 'form': filing['form'],
+                'accession': filing['accn'], 'filed': filing['filed'], 'split_factor': 1})
+        groups |= this_filing  # replaces any breakdown an earlier filing gave for the same year
+    rows = [r for g in groups.values() for r in g]
+    return sorted(rows, key=lambda r: (r['metric'], r['axis'], r['fiscal_year'], r['segment']))
 
 
 def cross_check(parsed: dict[str, list[dict]], companyfacts: dict, ticker: str) -> tuple[int, list[dict]]:
@@ -182,25 +189,26 @@ def cross_check(parsed: dict[str, list[dict]], companyfacts: dict, ticker: str) 
 
 def sum_check(rows: list[dict], consolidated: dict[tuple, float]) -> tuple[int, list[tuple]]:
     """
-    Does each breakdown reconcile to the consolidated total? Axes are hierarchical (Data Center = Compute + Networking),
-    so the test is whether SOME subset of the members sums to the total, within a million. consolidated maps
-    (metric, fiscal_year) -> value. Returns (axes checked, the (metric, axis, year) that did not reconcile).
+    Does each breakdown reconcile to the consolidated total? Slices can overlap (Data Center = Compute + Networking),
+    so the children find_parts detects are left out and the remaining top-level slices must add up to the total within
+    a million. An earlier version accepted any subset that matched, and it passed NVIDIA FY2025 geography with a stale
+    Singapore row in it, because leaving that row out happened to match. consolidated maps (metric, fiscal_year) ->
+    value. Returns (breakdowns checked, the (metric, axis, year) that did not reconcile).
     """
-    groups: dict[tuple, list[int]] = {}
+    groups: dict[tuple, list[dict]] = {}
     for r in rows:
         if not r['derived']:  # a remainder reconciles by construction, so it proves nothing
-            groups.setdefault((r['metric'], r['axis'], r['fiscal_year']), []).append(round(r['value'] / 1e6))
+            groups.setdefault((r['metric'], r['axis'], r['fiscal_year']), []).append(r)
 
     checked, failed = 0, []
-    for (metric, axis, fy), values in groups.items():
+    for (metric, axis, fy), members in groups.items():
         total = consolidated.get((metric, fy))
-        if total is None or len(values) > MAX_SUBSET_MEMBERS:
+        if total is None:
             continue
         checked += 1
-        sums = {0}
-        for v in values:
-            sums |= {s + v for s in sums}
-        if not any(abs(s - round(total / 1e6)) <= SUM_TOLERANCE_M for s in sums if s):
+        parts = find_parts(members)
+        top = sum(round(r['value'] / 1e6) for r in members if (fy, r['segment']) not in parts)
+        if abs(top - round(total / 1e6)) > SUM_TOLERANCE_M:
             failed.append((metric, axis, fy))
     return checked, failed
 
@@ -262,3 +270,29 @@ def ingest_segments(ticker: str, companyfacts: dict) -> bool:
         print(f'  derived {CORPORATE} {r["metric"]} FY{r["fiscal_year"]}: {r["value"] / 1e6:,.0f}M')
     replace_segment_facts(ticker, rows + derived)
     return True
+
+
+def find_parts(rows: list[dict]) -> dict[tuple[int, str], str]:
+    """
+    Slices on one axis can overlap: NVIDIA's Data Center is Compute + Networking, Apple's Products is iPhone + Mac +
+    iPad + Wearables. Adding all of them double-counts. A slice that equals the sum of two or more other slices in the
+    same year is their parent. Returns (fiscal_year, child) -> parent. Detected from the numbers, so no per-company list.
+    """
+    from itertools import combinations
+
+    parts = {}
+    years: dict[int, list[tuple[str, int]]] = {}
+    for r in rows:
+        if not r['derived'] and r['segment'] != CORPORATE and r['value'] > 0:
+            years.setdefault(r['fiscal_year'], []).append((r['segment'], round(r['value'] / 1e6)))
+
+    for fy, members in years.items():
+        if len(members) > MAX_SUBSET_MEMBERS:
+            continue
+        for parent, total in sorted(members, key=lambda m: -m[1]):
+            others = [m for m in members if m[0] != parent and (fy, m[0]) not in parts and m[1] < total]
+            match = next((combo for size in range(2, len(others) + 1) for combo in combinations(others, size)
+                          if abs(sum(v for _, v in combo) - total) <= SUM_TOLERANCE_M), None)
+            for child, _ in match or ():
+                parts[(fy, child)] = parent
+    return parts

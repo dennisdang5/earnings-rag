@@ -94,3 +94,70 @@ def test_agent_can_chain_get_financials_into_calculate(monkeypatch):
     assert [t['tool'] for t in result.trace] == ['get_financials', 'get_financials', 'calculate']
     assert '114.2' in json.loads(result.trace[2]['result'])['result'].__str__()
     assert 'NVDA_revenue_FY2025' in result.answer
+
+
+# --- breakdowns --------------------------------------------------------------------------------------------------
+
+def seg(segment, value_m, fy=2025, derived=False):
+    return row(axis='product', segment=segment, value=value_m * 1e6, fiscal_year=fy, derived=derived)
+
+
+NVDA_PRODUCTS = [seg('Data Center', 115_186), seg('Compute', 102_196), seg('Networking', 12_990),
+                 seg('Gaming', 11_350), seg('OEM and Other', 389)]
+
+
+def call_breakdown(monkeypatch, rows=(), available=(('revenue', 'product', 2021, 2026),), names=(), **args):
+    seen = {}
+
+    def fake_get_breakdown(ticker, metric, axis, fiscal_year, years):
+        seen.update(ticker=ticker, metric=metric, axis=axis, fiscal_year=fiscal_year, years=years)
+        return list(rows)
+
+    monkeypatch.setattr(tools_module, 'get_breakdown', fake_get_breakdown)
+    monkeypatch.setattr(tools_module, 'available_breakdowns', lambda ticker, corporate: list(available))
+    monkeypatch.setattr(tools_module, 'breakdown_names', lambda ticker, metric: dict(names))
+    return json.loads(GET_FINANCIALS.call(json.dumps(args))), seen
+
+
+def test_breakdown_ids_name_the_axis_and_the_slice():
+    r = fact_result(seg('Data Center', 115_186))
+    assert r['id'] == 'NVDA_revenue_FY2025_product_DataCenter'
+    assert (r['breakdown'], r['segment'], r['value']) == ('product', 'Data Center', 115_186)
+    assert fact_result(seg('Corporate and other', -1))['id'].endswith('_product_CorporateAndOther')
+    assert 'segment' not in fact_result(row())  # consolidated rows are unchanged
+
+
+def test_breakdown_returns_every_slice_and_marks_overlapping_ones(monkeypatch):
+    out, seen = call_breakdown(monkeypatch, NVDA_PRODUCTS, company='NVDA', metric='revenue', breakdown='product')
+    assert seen == {'ticker': 'NVDA', 'metric': 'revenue', 'axis': 'product', 'fiscal_year': None, 'years': 2}
+    part_of = {r['segment']: r.get('part_of') for r in out['results']}
+    assert part_of == {'Data Center': None, 'Compute': 'Data Center', 'Networking': 'Data Center',
+                       'Gaming': None, 'OEM and Other': None}
+    assert 'do not add them' in out['note']
+
+
+def test_breakdown_a_company_does_not_report_lists_what_it_has(monkeypatch):
+    out, _ = call_breakdown(monkeypatch, available=[('revenue', 'segment', 2020, 2025)],
+                            company='COF', metric='revenue', breakdown='product')
+    assert 'COF does not report revenue by product' in out['error']
+    assert 'revenue by segment (FY2020-FY2025)' in out['error']
+
+
+def test_breakdowns_are_annual_only(monkeypatch):
+    out, _ = call_breakdown(monkeypatch, company='NVDA', metric='revenue', breakdown='product', period='Q4')
+    assert 'annual only' in out['error']
+
+
+def test_empty_breakdown_says_which_years_exist(monkeypatch):
+    out, _ = call_breakdown(monkeypatch, company='NVDA', metric='revenue', breakdown='product', fiscal_year=2012)
+    assert out['results'] == [] and '2021-2026' in out['note']
+
+
+def test_breakdown_result_names_the_slices_on_the_other_axes(monkeypatch):
+    names = {'product': ['Data Center', 'Gaming'], 'segment': ['Compute and Networking', 'Graphics', 'Corporate and other'],
+             'geography': ['US']}  # a single slice is not a breakdown, so geography is not offered
+    rows = [row(axis='segment', segment='Compute and Networking', value=116_193e6)]
+    out, _ = call_breakdown(monkeypatch, rows, available=[('revenue', 'segment', 2021, 2026)], names=names,
+                            company='NVDA', metric='revenue', breakdown='segment')
+    assert 'product: Data Center, Gaming' in out['note']
+    assert 'geography' not in out['note'] and 'segment:' not in out['note']
