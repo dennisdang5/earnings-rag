@@ -52,11 +52,19 @@ def normalize(text: str) -> str:
 
     return '\n'.join(lines)
 
-def trim_front_matter(text: str, fallback_chars: int = 6000) -> str:
-    m  = re.search(r'^Item\s*1\.?\s*Business', text, re.MULTILINE | re.IGNORECASE)
+def trim_front_matter(text: str, fallback_chars: int = 6000, form: str = '10-K') -> str:
+    """
+    Drop the cover page and table of contents. A 10-K's text starts at Item 1 Business; a 10-Q has no such item (the
+    "Item 1 Business" search matched nothing, so the fixed cut would remove 6,000 characters of real content), its text
+    starts at the Part I Financial Information heading.
+    """
+    if form == '10-Q':
+        m = re.search(r'^Part\s+I\b[^\n]{0,6}Financial\s+Information', text, re.MULTILINE | re.IGNORECASE)
+        return text[m.start():] if m else text[min(fallback_chars, 2000):]
+    m = re.search(r'^Item\s*1\.?\s*Business', text, re.MULTILINE | re.IGNORECASE)
     if m:
         return text[m.start():]
-    return text[fallback_chars:] # heading is not found then we cut a prefixed which is normally the table of contents
+    return text[fallback_chars:]  # heading is not found then we cut a prefixed which is normally the table of contents
 
 
 def chunk_text(text: str, chunk_size: int, overlap: int) -> list[str]:
@@ -75,8 +83,12 @@ def chunk_text(text: str, chunk_size: int, overlap: int) -> list[str]:
 
     return chunks
 
-def chunk_document(path: Path, ticker: str) -> list[dict]:
-    text = trim_front_matter(normalize(html_to_text(path)))
+def chunk_document(path: Path, ticker: str, form: str = '10-K', label: tuple[int, str] | None = None) -> list[dict]:
+    """
+    label is (fiscal year, 'FY'|'Q1'..'Q3'), see xbrl.period_label. The id stays {ticker}_{period}_{index}: a 10-K's
+    period is its fiscal year end and a 10-Q's is a Q1-Q3 end, so the two cannot collide and existing ids do not change.
+    """
+    text = trim_front_matter(normalize(html_to_text(path)), form=form)
     pieces = chunk_text(text, settings.chunk_size_tokens, settings.chunk_overlap_tokens)
 
     records = []
@@ -86,24 +98,45 @@ def chunk_document(path: Path, ticker: str) -> list[dict]:
             'ticker': ticker,
             'period': path.stem,
             'chunk_index': i,
-            'text': piece
+            'text': piece,
+            'form': form,
+            'fiscal_year': label[0] if label else None,
+            'fiscal_period': label[1] if label else None,
         })
 
     return records
 
+
+def _calendar(ticker: str) -> list[tuple]:
+    """The ticker's fiscal calendar from the cached SEC facts; the labels need them, so facts are ingested first."""
+    from earnings_rag.xbrl import fiscal_calendar
+    path = settings.data_dir / 'xbrl' / f'{ticker}.json'
+    if not path.exists():
+        raise SystemExit(f'{path} not found: run python -m earnings_rag.xbrl first (chunks carry fiscal labels)')
+    return fiscal_calendar(json.loads(path.read_text(encoding='utf-8')), ticker)
+
+
 def chunk_all() -> None:
+    from datetime import date
+    from earnings_rag.xbrl import period_label
+
     out_path = settings.chunks_path
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
     total = 0
     with out_path.open('w', encoding='utf-8') as f:
         for ticker in settings.tickers:
-            for path in sorted((settings.raw_dir / ticker).glob('*.html')):
-                records = chunk_document(path, ticker)
-                for r in records:
-                    f.write(json.dumps(r) + '\n')
-                total += len(records)
-                print(f'{ticker} {path.stem}: {len(records)} chunks')
+            years = _calendar(ticker)
+            # 10-Ks sit in data/raw/<ticker>/, 10-Qs in data/raw/<ticker>/10-Q/ (ingest.ingest_quarters)
+            for form, folder in (('10-K', settings.raw_dir / ticker), ('10-Q', settings.raw_dir / ticker / '10-Q')):
+                for path in sorted(folder.glob('*.html')):
+                    label = period_label(date.fromisoformat(path.stem), years)
+                    records = chunk_document(path, ticker, form, label)
+                    for r in records:
+                        f.write(json.dumps(r) + '\n')
+                    total += len(records)
+                    print(f'{ticker} {form} {path.stem} ({label[1] + " FY" + str(label[0]) if label else "no label"}): '
+                          f'{len(records)} chunks')
     print(f'total: {total} -> {out_path}')
 
 if __name__ == '__main__':

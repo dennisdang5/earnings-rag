@@ -313,24 +313,39 @@ def _normalize_balance(rows: list[dict], ticker: str, metric: str, concept: str,
 
     out = []
     for end, r in latest.items():
-        day = date.fromisoformat(end)
-        located = _locate(day, day, years) if years else None
-        if located is None or located[0] < MIN_FISCAL_YEAR:
-            continue
-        fy, fy_start = located
-        fy_end = next((e for y, _, e in years if y == fy), None)
-        quarter = round((day - fy_start).days / 91.3)
-        if fy_end is not None and abs((day - fy_end).days) <= 7:
-            period = 'FY'
-        elif quarter in (1, 2, 3) and abs((day - fy_start).days - quarter * 91.3) <= 10:
-            period = f'Q{quarter}'
-        else:
-            continue  # not a quarter end (e.g. a mid-quarter date in a note)
+        label = period_label(date.fromisoformat(end), years)
+        if label is None or label[0] < MIN_FISCAL_YEAR:
+            continue  # not a quarter end (e.g. a mid-quarter date in a note), or before the years we keep
+        fy, period = label
         out.append({'ticker': ticker, 'metric': metric, 'segment': '', 'axis': '', 'concept': concept,
                     'fiscal_year': fy, 'fiscal_period': period, 'period_start': end, 'period_end': end,
                     'value': r['val'], 'unit': spec['unit'], 'derived': False, 'form': r['form'],
                     'accession': r['accn'], 'filed': r['filed'], 'split_factor': 1})
     return out
+
+
+def period_label(day: date, years: list[tuple]) -> tuple[int, str] | None:
+    """
+    (fiscal year, 'FY' | 'Q1' | 'Q2' | 'Q3') for a period end date, or None if it is not a fiscal year or quarter end.
+    One rule for everything that has a date but no label: a balance in the facts table, a 10-Q's text chunks. Q4 is never
+    a period end of its own: it ends on the fiscal year end, which is FY.
+    """
+    located = _locate(day, day, years) if years else None
+    if located is None:
+        return None
+    fy, fy_start = located
+    fy_end = next((e for y, _, e in years if y == fy), None)
+    if fy_end is not None and abs((day - fy_end).days) <= 7:
+        return fy, 'FY'
+    quarter = round((day - fy_start).days / 91.3)
+    if quarter in (1, 2, 3) and abs((day - fy_start).days - quarter * 91.3) <= 10:
+        return fy, f'Q{quarter}'
+    return None
+
+
+def fiscal_calendar(companyfacts: dict, ticker: str) -> list[tuple]:
+    """(fiscal year, start, end) for each of the company's fiscal years, for period_label()."""
+    return _fiscal_years(companyfacts['facts']['us-gaap'], resolve(companyfacts, ticker))
 
 
 def normalize(companyfacts: dict, ticker: str) -> list[dict]:
