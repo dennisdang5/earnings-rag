@@ -185,3 +185,31 @@ def test_ingest_stores_nothing_when_the_parser_disagrees_with_the_api(monkeypatc
     monkeypatch.setattr('earnings_rag.store.replace_segment_facts', lambda t, rows: stored.append(rows))
     assert not segments.ingest_segments('NVDA', facts)
     assert stored == []
+
+
+def test_find_parts_detects_children_from_the_numbers():
+    rows = [row('revenue', 'product', n, v) for n, v in
+            [('Products', 307_003), ('Services', 109_158), ('iPhone', 209_586), ('Mac', 33_708), ('iPad', 28_023),
+             ('Wearables', 35_686)]]
+    parts = segments.find_parts(rows)
+    assert parts == {(2025, c): 'Products' for c in ('iPhone', 'Mac', 'iPad', 'Wearables')}
+    flat = [row('revenue', 'geography', n, v) for n, v in [('US', 151_790), ('CN', 64_377), ('Other', 199_994)]]
+    assert segments.find_parts(flat) == {}
+
+
+def test_a_later_filing_replaces_the_whole_breakdown_for_a_year():
+    # NVIDIA's FY2026 10-K re-presented FY2025 geography and dropped Singapore; the old Singapore row must not survive
+    def geo(name, value):
+        return {'metric': 'revenue', 'concept': 'Revenues', 'axis': 'geography', 'segment': name, 'value': value * M,
+                'period_start': FY[0], 'period_end': FY[1]}
+    facts = companyfacts(api(1, filed='2025-02-26'), api(1, end='2026-01-25', start='2025-01-27', filed='2026-02-25'))
+    parsed = {'2025-01-26': [geo('US', 61_257), geo('SG', 23_684)], '2026-01-25': [geo('US', 77_482)]}
+    rows = normalize_segments(parsed, facts, 'NVDA')
+    assert [(r['segment'], r['value'] / M) for r in rows] == [('US', 77_482)]
+
+
+def test_sum_check_is_not_fooled_by_a_subset_that_happens_to_match():
+    total = {('revenue', 2025): 130_497 * M}
+    stale = [row('revenue', 'geography', n, v) for n, v in
+             [('US', 77_482), ('China', 25_048), ('TW', 23_600), ('Other', 4_367), ('SG', 23_684)]]
+    assert sum_check(stale, total) == (1, [('revenue', 'geography', 2025)])

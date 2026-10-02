@@ -1,4 +1,5 @@
 import json
+import re
 from dataclasses import dataclass
 from typing import Callable, Literal
 
@@ -6,7 +7,8 @@ from pydantic import BaseModel, Field, ValidationError
 
 from earnings_rag.calc import evaluate
 from earnings_rag.pipeline import retrieve
-from earnings_rag.store import get_facts, fact_years
+from earnings_rag.segments import CORPORATE, find_parts
+from earnings_rag.store import get_facts, fact_years, get_breakdown, available_breakdowns, breakdown_names
 from earnings_rag.xbrl import METRICS
 
 
@@ -101,6 +103,7 @@ CALCULATE = Tool(
 COMPANIES = ('NVDA', 'AAPL', 'COF')
 AVAILABLE = {t: [m for m, spec in METRICS.items() if t in spec['concepts']] for t in COMPANIES}
 DEFAULT_FACT_ROWS = 8  # the latest two years of quarters and their FY rows; every row is re-sent on later calls
+BREAKDOWN_YEARS = 2    # without a fiscal year, a breakdown covers two years so a growth question takes one call
 
 MetricName = Literal[tuple(METRICS)]  # the model can only name metrics that exist
 
@@ -111,6 +114,13 @@ class GetFinancialsArgs(BaseModel):
     fiscal_year: int | None = Field(default=None, description='Omit for the most recent periods.')
     period: Literal['FY', 'Q1', 'Q2', 'Q3', 'Q4'] | None = Field(
         default=None, description='FY for the full year, Q1-Q4 for a quarter. Omit for all periods.')
+    breakdown: Literal['product', 'segment', 'geography'] | None = Field(
+        default=None, description=(
+            'Split the figure into slices. product: product lines or markets (e.g. Data Center, Gaming, iPhone, '
+            'Services). segment: the reporting segments, which are regions for some companies (e.g. Compute and '
+            "Networking; Apple's Americas, Europe, Greater China; Credit Card). geography: revenue by country, "
+            'usually a few named countries plus an "Other Countries" remainder that is not a region. Returns every '
+            'slice for the year (the latest two years if fiscal_year is omitted). Annual only.'))
 
 
 def fact_result(row: dict) -> dict:
@@ -123,10 +133,15 @@ def fact_result(row: dict) -> dict:
     elif unit == 'USD/shares':
         unit = 'USD per share'
 
-    out = {'id': f"{row['ticker']}_{row['metric']}_FY{row['fiscal_year']}{'' if period == 'FY' else period}",
-           'company': row['ticker'], 'metric': row['metric'], 'fiscal_year': row['fiscal_year'], 'period': period,
-           'period_end': str(row['period_end']), 'value': value, 'unit': unit, 'derived': row['derived'],
-           'source': f"{row['form']} filed {row['filed']}"}
+    fact_id = f"{row['ticker']}_{row['metric']}_FY{row['fiscal_year']}{'' if period == 'FY' else period}"
+    out = {'id': fact_id, 'company': row['ticker'], 'metric': row['metric'], 'fiscal_year': row['fiscal_year'],
+           'period': period}
+    if row.get('axis'):
+        slug = ''.join(w[:1].upper() + w[1:] for w in re.split(r'[^A-Za-z0-9]+', row['segment']) if w)
+        out['id'] = f"{fact_id}_{row['axis']}_{slug}"   # NVDA_revenue_FY2025_product_DataCenter
+        out['breakdown'], out['segment'] = row['axis'], row['segment']
+    out |= {'period_end': str(row['period_end']), 'value': value, 'unit': unit, 'derived': row['derived'],
+            'source': f"{row['form']} filed {row['filed']}"}
     if row['split_factor'] != 1:
         # the filing shows the pre-split figure; giving both lets the answer match the document it cites
         out['split_adjusted'] = True
@@ -134,7 +149,42 @@ def fact_result(row: dict) -> dict:
     return out
 
 
+def get_breakdown_result(args: GetFinancialsArgs) -> dict:
+    if args.period not in (None, 'FY'):
+        return {'error': 'Breakdowns are annual only for now: omit period or use FY.'}
+    available = available_breakdowns(args.company, CORPORATE)
+    if (args.metric, args.breakdown) not in {(m, a) for m, a, _, _ in available}:
+        listed = '; '.join(f'{m} by {a} (FY{lo}-FY{hi})' for m, a, lo, hi in available) or 'none'
+        return {'error': f'{args.company} does not report {args.metric} by {args.breakdown}. '
+                         f'Breakdowns available for {args.company}: {listed}'}
+
+    rows = get_breakdown(args.company, args.metric, args.breakdown, args.fiscal_year, BREAKDOWN_YEARS)
+    if not rows:
+        lo, hi = next((lo, hi) for m, a, lo, hi in available if (m, a) == (args.metric, args.breakdown))
+        return {'results': [], 'note': f'No matching data. This breakdown is available for fiscal years {lo}-{hi}.'}
+    parts = find_parts(rows)
+    results = []
+    for r in rows:
+        out = fact_result(r)
+        if (r['fiscal_year'], r['segment']) in parts:
+            out['part_of'] = parts[(r['fiscal_year'], r['segment'])]
+        results.append(out)
+    notes = []
+    if parts:
+        notes.append('Rows with part_of are already included in that row: do not add them to it.')
+    # Without this the model asked for "segment", got Compute and Networking, and called it Data Center (3 of 3 runs)
+    other = {a: names for a, names in breakdown_names(args.company, args.metric).items()
+             if a != args.breakdown and len([n for n in names if n != CORPORATE]) >= 2}
+    if other:
+        notes.append(f'Other breakdowns of {args.company} {args.metric}: '
+                     + '; '.join(f'{a}: {", ".join(names)}' for a, names in other.items())
+                     + '. If the slice you need is listed there, call again with that breakdown.')
+    return {'results': results, **({'note': ' '.join(notes)} if notes else {})}
+
+
 def get_financials(args: GetFinancialsArgs) -> dict:
+    if args.breakdown is not None:
+        return get_breakdown_result(args)
     if args.metric not in AVAILABLE[args.company]:
         return {'error': f'{args.company} does not report {args.metric}. '
                          f'Available for {args.company}: {", ".join(AVAILABLE[args.company])}'}
@@ -154,7 +204,8 @@ GET_FINANCIALS = Tool(
         'Fiscal year is the calendar year the fiscal year ends in (NVIDIA fiscal 2025 ended January 2025). '
         'Dollar amounts are in USD millions. Per-share values are adjusted for stock splits to today\'s share count; '
         'adjusted rows also give the as_reported figure. derived=true means a quarter computed as a year-to-date '
-        'total minus the earlier one. Metrics per company: '
+        'total minus the earlier one. Set breakdown to split a figure by product, business segment or geography. '
+        'Metrics per company: '
         + '; '.join(f'{t}: {", ".join(ms)}' for t, ms in AVAILABLE.items()) + '.'
     ),
     args_model=GetFinancialsArgs,
