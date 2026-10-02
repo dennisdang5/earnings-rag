@@ -345,6 +345,7 @@ def stub_ingest(monkeypatch, cf):
     monkeypatch.setattr(xbrl, 'fetch_companyfacts', lambda ticker, refresh=False: cf)
     monkeypatch.setattr('earnings_rag.store.init_schema', lambda: None)
     monkeypatch.setattr('earnings_rag.store.upsert_facts', stored.append)
+    monkeypatch.setattr('earnings_rag.segments.ingest_segments', lambda ticker, cf: True)  # reads data/raw, not hermetic
     return stored
 
 

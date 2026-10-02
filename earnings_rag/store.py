@@ -15,11 +15,13 @@ CREATE TABLE IF NOT EXISTS chunks(
 
 CREATE INDEX IF NOT EXISTS chunks_ticker_period_idx ON chunks (ticker, period);
 
--- segment '' means consolidated; per-segment rows (e.g. a product line) share the table
+-- segment '' means consolidated; per-segment rows share the table. axis says which breakdown a segment is on:
+-- 'product', 'segment' (business segment) or 'geography'; '' for consolidated rows
 CREATE TABLE IF NOT EXISTS facts(
     ticker  TEXT    NOT NULL,
     metric  TEXT    NOT NULL,
     segment TEXT    NOT NULL DEFAULT '',
+    axis    TEXT    NOT NULL DEFAULT '',
     fiscal_year INTEGER NOT NULL,
     fiscal_period   TEXT    NOT NULL,
     concept TEXT    NOT NULL,
@@ -32,11 +34,21 @@ CREATE TABLE IF NOT EXISTS facts(
     accession   TEXT    NOT NULL,
     filed   DATE    NOT NULL,
     split_factor    DOUBLE PRECISION NOT NULL DEFAULT 1,
-    PRIMARY KEY (ticker, metric, segment, fiscal_year, fiscal_period)
+    PRIMARY KEY (ticker, metric, axis, segment, fiscal_year, fiscal_period)
     );
 
 -- value * split_factor is the as-reported figure. This line migrates databases created before the column existed.
 ALTER TABLE facts ADD COLUMN IF NOT EXISTS split_factor DOUBLE PRECISION NOT NULL DEFAULT 1;
+
+-- Same for axis, which also joins the primary key (one segment name can sit on two axes). Re-keys only if needed.
+ALTER TABLE facts ADD COLUMN IF NOT EXISTS axis TEXT NOT NULL DEFAULT '';
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_index i JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = ANY(i.indkey)
+                   WHERE i.indrelid = 'facts'::regclass AND i.indisprimary AND a.attname = 'axis') THEN
+        ALTER TABLE facts DROP CONSTRAINT facts_pkey;
+        ALTER TABLE facts ADD PRIMARY KEY (ticker, metric, axis, segment, fiscal_year, fiscal_period);
+    END IF;
+END $$;
 """
 
 def connect() -> psycopg.Connection:
@@ -157,15 +169,15 @@ def get_chunk(chunk_id: str) -> dict | None:
         'text': row[4]
     }
 
-FACT_COLUMNS = ['ticker', 'metric', 'segment', 'fiscal_year', 'fiscal_period', 'concept', 'unit', 'value',
+FACT_COLUMNS = ['ticker', 'metric', 'segment', 'axis', 'fiscal_year', 'fiscal_period', 'concept', 'unit', 'value',
                 'period_start', 'period_end', 'derived', 'form', 'accession', 'filed', 'split_factor']
 
 def upsert_facts(rows: list[dict]) -> None:
     sql = f"""
         INSERT INTO facts ({', '.join(FACT_COLUMNS)})
         VALUES ({', '.join(['%s'] * len(FACT_COLUMNS))})
-        ON CONFLICT (ticker, metric, segment, fiscal_year, fiscal_period) DO UPDATE SET
-            {', '.join(f'{c} = EXCLUDED.{c}' for c in FACT_COLUMNS[5:])}
+        ON CONFLICT (ticker, metric, axis, segment, fiscal_year, fiscal_period) DO UPDATE SET
+            {', '.join(f'{c} = EXCLUDED.{c}' for c in FACT_COLUMNS[6:])}
     """
     with connect() as conn:
         with conn.cursor() as cur:
@@ -173,12 +185,12 @@ def upsert_facts(rows: list[dict]) -> None:
         conn.commit()
 
 def get_facts(ticker: str, metric: str, fiscal_year: int | None = None, fiscal_period: str | None = None,
-              segment: str = '', limit: int = 12) -> list[dict]:
+              segment: str = '', axis: str = '', limit: int = 12) -> list[dict]:
     """
     Most recent first. With no fiscal_year, this returns the latest periods, which answers "last quarter" questions.
     """
-    sql = f'SELECT {", ".join(FACT_COLUMNS)} FROM facts WHERE ticker = %s AND metric = %s AND segment = %s'
-    params = [ticker, metric, segment]
+    sql = f'SELECT {", ".join(FACT_COLUMNS)} FROM facts WHERE ticker = %s AND metric = %s AND segment = %s AND axis = %s'
+    params = [ticker, metric, segment, axis]
     if fiscal_year is not None:
         sql += ' AND fiscal_year = %s'
         params.append(fiscal_year)
