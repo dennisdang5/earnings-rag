@@ -81,21 +81,27 @@ def _number(tag) -> float | None:
 
 def parse_inline(html: bytes, ticker: str) -> list[dict]:
     """
-    Every full-year fact in a 10-K's inline XBRL for a metric in METRICS, as one row per (metric, axis, member, year).
+    Every full-year fact (and fiscal-year-end balance) in a 10-K's inline XBRL for a metric in METRICS, one row per (metric, axis, member, year).
     axis '' means consolidated. Pure: no network, no database.
     """
     soup = BeautifulSoup(html, 'xml')
 
     contexts = {}
     for c in soup.find_all('context'):
-        period = c.find('period')
-        start, end = period.find('startDate'), period.find('endDate')
-        if start is None or end is None:
-            continue  # instant (balance sheet) context
-        dims = [(m['dimension'].split(':')[-1], m.get_text(strip=True)) for m in c.find_all('explicitMember')]
         if c.find('typedMember') is not None:
             continue
-        contexts[c['id']] = (dims, start.get_text(strip=True), end.get_text(strip=True))
+        period = c.find('period')
+        start, end, instant = period.find('startDate'), period.find('endDate'), period.find('instant')
+        dims = [(m['dimension'].split(':')[-1], m.get_text(strip=True)) for m in c.find_all('explicitMember')]
+        if instant is not None:
+            contexts[c['id']] = (dims, None, instant.get_text(strip=True))
+        elif start is not None and end is not None:
+            contexts[c['id']] = (dims, start.get_text(strip=True), end.get_text(strip=True))
+
+    # A balance (loans, deposits) is read only at a fiscal year end, which a full-year duration in the same filing
+    # identifies; other dates in the notes (a debt maturity, a mid-year snapshot) are not fiscal-year figures.
+    year_ends = {end for _, start, end in contexts.values()
+                 if start is not None and _classify((date.fromisoformat(end) - date.fromisoformat(start)).days) == 'FY'}
 
     concept_metric = {spec['concepts'][ticker]: metric for metric, spec in METRICS.items()
                       if ticker in spec['concepts'] and spec['unit'] == 'USD'}
@@ -104,8 +110,13 @@ def parse_inline(html: bytes, ticker: str) -> list[dict]:
         concept = tag.get('name', '').split(':')[-1]
         if concept not in concept_metric or tag.get('contextRef') not in contexts:
             continue
+        metric = concept_metric[concept]
         dims, start, end = contexts[tag['contextRef']]
-        if _classify((date.fromisoformat(end) - date.fromisoformat(start)).days) != 'FY':
+        if METRICS[metric].get('balance'):
+            if start is not None or end not in year_ends:
+                continue
+            start = end  # a balance has no start; stored as a one-day period like the consolidated balance rows
+        elif start is None or _classify((date.fromisoformat(end) - date.fromisoformat(start)).days) != 'FY':
             continue
         located = _axis_and_member(dims)
         value = _number(tag)
@@ -113,8 +124,8 @@ def parse_inline(html: bytes, ticker: str) -> list[dict]:
             continue
         axis, member = located
         # the same fact is often printed twice (statement and note); the first reading is kept
-        found.setdefault((concept_metric[concept], axis, member, start, end),
-                         {'metric': concept_metric[concept], 'concept': concept, 'axis': axis, 'segment': member,
+        found.setdefault((metric, axis, member, start, end),
+                         {'metric': metric, 'concept': concept, 'axis': axis, 'segment': member,
                           'value': value, 'period_start': start, 'period_end': end})
 
     # NVIDIA's FY2026 10-K tags a second "corporate" operating income equal to the total of the operating segments
@@ -176,8 +187,10 @@ def cross_check(parsed: dict[str, list[dict]], companyfacts: dict, ticker: str) 
         for f in facts:
             if f['axis']:
                 continue
+            balance = METRICS[f['metric']].get('balance')
             readings = {r['val'] for r in gaap.get(f['concept'], {}).get('units', {}).get('USD', [])
-                        if r.get('start') == f['period_start'] and r['end'] == f['period_end']}
+                        if r['end'] == f['period_end'] and (('start' not in r) if balance
+                                                            else r.get('start') == f['period_start'])}
             if not readings:
                 continue
             checked += 1

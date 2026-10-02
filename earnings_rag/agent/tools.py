@@ -140,6 +140,9 @@ def fact_result(row: dict) -> dict:
         slug = ''.join(w[:1].upper() + w[1:] for w in re.split(r'[^A-Za-z0-9]+', row['segment']) if w)
         out['id'] = f"{fact_id}_{row['axis']}_{slug}"   # NVDA_revenue_FY2025_product_DataCenter
         out['breakdown'], out['segment'] = row['axis'], row['segment']
+    if METRICS.get(row['metric'], {}).get('balance'):
+        out['balance'] = True                            # a snapshot on one date: never add it across years or periods
+        out['as_of'] = str(row['period_end'])
     out |= {'period_end': str(row['period_end']), 'value': value, 'unit': unit, 'derived': row['derived'],
             'source': f"{row['form']} filed {row['filed']}"}
     if row['split_factor'] != 1:
@@ -185,6 +188,9 @@ def get_breakdown_result(args: GetFinancialsArgs) -> dict:
 def get_financials(args: GetFinancialsArgs) -> dict:
     if args.breakdown is not None:
         return get_breakdown_result(args)
+    if METRICS[args.metric].get('balance') and args.period == 'Q4':
+        return {'error': f'{args.metric} is a balance on a date: the fiscal year end is period FY, '
+                         f'and Q1-Q3 are the quarter ends.'}
     if args.metric not in AVAILABLE[args.company]:
         return {'error': f'{args.company} does not report {args.metric}. '
                          f'Available for {args.company}: {", ".join(AVAILABLE[args.company])}'}
@@ -194,7 +200,17 @@ def get_financials(args: GetFinancialsArgs) -> dict:
         years = fact_years(args.company, args.metric)
         span = f'fiscal years {years[0]}-{years[1]}' if years else 'no years'
         return {'results': [], 'note': f'No matching data. {args.company} {args.metric} is available for {span}.'}
-    return {'results': [fact_result(r) for r in rows]}
+    out = {'results': [fact_result(r) for r in rows]}
+    # Without this the model computed Apple's company-wide margin and called it Services', never learning that cost of
+    # revenue can be split by product (3 of 3 runs)
+    available = available_breakdowns(args.company, CORPORATE)
+    if available:
+        by_metric: dict[str, list[str]] = {}
+        for metric, axis, _, _ in available:
+            by_metric.setdefault(metric, []).append(axis)
+        out['note'] = (f'Breakdowns available for {args.company} (set breakdown to get one slice such as a product '
+                       f'line or segment): ' + '; '.join(f'{m} by {", ".join(axes)}' for m, axes in by_metric.items()))
+    return out
 
 
 GET_FINANCIALS = Tool(
@@ -204,7 +220,11 @@ GET_FINANCIALS = Tool(
         'Fiscal year is the calendar year the fiscal year ends in (NVIDIA fiscal 2025 ended January 2025). '
         'Dollar amounts are in USD millions. Per-share values are adjusted for stock splits to today\'s share count; '
         'adjusted rows also give the as_reported figure. derived=true means a quarter computed as a year-to-date '
-        'total minus the earlier one. Set breakdown to split a figure by product, business segment or geography. '
+        'total minus the earlier one. balance=true rows (loans, deposits) are values on the as_of date, not amounts '
+        'over a period: compare them across dates, never add them. If the question is about one product line, segment or '
+        'region (Services, Data Center, Americas, Credit Card), set breakdown: a company-wide figure is not a '
+        'substitute for part of the company, and a margin for that part needs its revenue and its cost of revenue, '
+        'both with the same breakdown. '
         'Metrics per company: '
         + '; '.join(f'{t}: {", ".join(ms)}' for t, ms in AVAILABLE.items()) + '.'
     ),

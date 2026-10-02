@@ -41,6 +41,26 @@ METRICS = {
     'noninterest_income': {
         'concepts': {'COF': 'NoninterestIncome'},
         'unit': 'USD', 'additive': True},
+    'cost_of_revenue': {
+        'concepts': {'NVDA': 'CostOfRevenue', 'AAPL': 'CostOfGoodsAndServicesSold'},
+        'unit': 'USD', 'additive': True},
+    'pretax_income': {
+        'concepts': {t: 'IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest'
+                     for t in ('NVDA', 'AAPL', 'COF')},
+        'unit': 'USD', 'additive': True},
+    'provision_for_credit_losses': {
+        'concepts': {'COF': 'ProvisionForLoanLossesExpensed'},
+        'unit': 'USD', 'additive': True},
+    'noninterest_expense': {
+        'concepts': {'COF': 'NoninterestExpense'},
+        'unit': 'USD', 'additive': True},
+    # balance=True: a value on a date (the period's last day), not an amount over the period. Never added or derived.
+    'loans': {
+        'concepts': {'COF': 'NotesReceivableGross'},
+        'unit': 'USD', 'additive': False, 'balance': True},
+    'deposits': {
+        'concepts': {'COF': 'Deposits'},
+        'unit': 'USD', 'additive': False, 'balance': True},
 }
 
 SHARES_CONCEPT = 'WeightedAverageNumberOfDilutedSharesOutstanding'
@@ -290,6 +310,57 @@ def _normalize_metric(rows: list[dict], ticker: str, metric: str, concept: str, 
     return out
 
 
+def _fiscal_years(gaap: dict, ticker: str) -> list[tuple]:
+    """(fiscal year, start, end) for every full year any of the company's flow metrics covers, oldest first."""
+    annual = set()
+    for spec in METRICS.values():
+        concept = spec['concepts'].get(ticker)
+        if spec.get('balance') or concept not in gaap:
+            continue
+        for r in gaap[concept]['units'].get(spec['unit'], []):
+            if 'start' in r and _classify(_days(r)) == 'FY':
+                annual.add((r['start'], r['end']))
+    years = {}
+    for s, e in annual:  # a restated year can carry slightly different dates; keep the latest-ending reading per year
+        fy = date.fromisoformat(e).year
+        if fy not in years or e > years[fy][1].isoformat():
+            years[fy] = (date.fromisoformat(s), date.fromisoformat(e))
+    return sorted((fy, s, e) for fy, (s, e) in years.items())
+
+
+def _normalize_balance(rows: list[dict], ticker: str, metric: str, concept: str, spec: dict,
+                       years: list[tuple]) -> list[dict]:
+    """
+    Balances (loans, deposits) are values on a date, so a row is the balance on the last day of its period: FY for the
+    fiscal year end, Q1-Q3 for a 10-Q's quarter end. The latest filing wins, as for flows. Nothing is derived.
+    """
+    latest: dict[str, dict] = {}
+    for r in rows:
+        if 'start' not in r and (r['end'] not in latest or r['filed'] > latest[r['end']]['filed']):
+            latest[r['end']] = r
+
+    out = []
+    for end, r in latest.items():
+        day = date.fromisoformat(end)
+        located = _locate(day, day, years) if years else None
+        if located is None or located[0] < MIN_FISCAL_YEAR:
+            continue
+        fy, fy_start = located
+        fy_end = next((e for y, _, e in years if y == fy), None)
+        quarter = round((day - fy_start).days / 91.3)
+        if fy_end is not None and abs((day - fy_end).days) <= 7:
+            period = 'FY'
+        elif quarter in (1, 2, 3) and abs((day - fy_start).days - quarter * 91.3) <= 10:
+            period = f'Q{quarter}'
+        else:
+            continue  # not a quarter end (e.g. a mid-quarter date in a note)
+        out.append({'ticker': ticker, 'metric': metric, 'segment': '', 'axis': '', 'concept': concept,
+                    'fiscal_year': fy, 'fiscal_period': period, 'period_start': end, 'period_end': end,
+                    'value': r['val'], 'unit': spec['unit'], 'derived': False, 'form': r['form'],
+                    'accession': r['accn'], 'filed': r['filed'], 'split_factor': 1})
+    return out
+
+
 def normalize(companyfacts: dict, ticker: str) -> list[dict]:
     """
     Turn the SEC's raw facts into one clean row per (metric, fiscal year, fiscal period), with missing quarters
@@ -297,10 +368,15 @@ def normalize(companyfacts: dict, ticker: str) -> list[dict]:
     """
     gaap = companyfacts['facts']['us-gaap']
     splits = find_splits(companyfacts, ticker)
+    years = _fiscal_years(gaap, ticker)
     out = []
     for metric, spec in METRICS.items():
         concept = spec['concepts'].get(ticker)
         if concept is None or concept not in gaap:
+            continue
+        if spec.get('balance'):
+            out.extend(_normalize_balance(gaap[concept]['units'].get(spec['unit'], []), ticker, metric, concept, spec,
+                                          years))
             continue
         out.extend(_normalize_metric(gaap[concept]['units'].get(spec['unit'], []), ticker, metric, concept, spec,
                                        splits))

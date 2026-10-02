@@ -213,3 +213,27 @@ def test_sum_check_is_not_fooled_by_a_subset_that_happens_to_match():
     stale = [row('revenue', 'geography', n, v) for n, v in
              [('US', 77_482), ('China', 25_048), ('TW', 23_600), ('Other', 4_367), ('SG', 23_684)]]
     assert sum_check(stale, total) == (1, [('revenue', 'geography', 2025)])
+
+
+def test_balances_are_read_only_at_a_fiscal_year_end():
+    segment = [(ITEMS, 'us-gaap:OperatingSegmentsMember'), (SEGMENT, 'cof:ConsumerBankingSegmentMember')]
+    html = ixbrl({'fy': ('2024-01-01', '2024-12-31', []), 'ye': ('2024-12-31', '2024-12-31', segment),
+                  'mid': ('2024-06-30', '2024-06-30', segment)},
+                 [('Deposits', 'ye', '318,329', 'scale="6"'), ('Deposits', 'mid', '1', 'scale="6"')])
+    html = html.replace(b'<xbrli:startDate>2024-12-31</xbrli:startDate><xbrli:endDate>2024-12-31</xbrli:endDate>',
+                        b'<xbrli:instant>2024-12-31</xbrli:instant>')
+    html = html.replace(b'<xbrli:startDate>2024-06-30</xbrli:startDate><xbrli:endDate>2024-06-30</xbrli:endDate>',
+                        b'<xbrli:instant>2024-06-30</xbrli:instant>')
+    [r] = parse_inline(html, 'COF')
+    assert (r['metric'], r['segment'], r['value'], r['period_end']) == ('deposits', 'Consumer Banking', 318_329 * M,
+                                                                       '2024-12-31')
+
+
+def test_cross_check_compares_a_balance_with_the_apis_date_only_value():
+    html = ixbrl({'fy': ('2024-01-01', '2024-12-31', []), 'ye': ('2024-12-31', '2024-12-31', [])},
+                 [('Deposits', 'ye', '362,707', 'scale="6"')]).replace(
+        b'<xbrli:startDate>2024-12-31</xbrli:startDate><xbrli:endDate>2024-12-31</xbrli:endDate>',
+        b'<xbrli:instant>2024-12-31</xbrli:instant>')
+    facts = {'facts': {'us-gaap': {'Deposits': {'units': {'USD': [
+        {'end': '2024-12-31', 'val': 362_707 * M, 'accn': 'a', 'form': '10-K', 'filed': '2025-02-20'}]}}}}}
+    assert cross_check({'x': parse_inline(html, 'COF')}, facts, 'COF') == (1, [])
