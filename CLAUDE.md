@@ -64,7 +64,7 @@ python eval/run_eval.py --refusals                  # generation check, calls th
 
 **Next, in order, each its own branch/PR after the previous one merges:**
 - (Done: `agent/eps-precision` and `agent/get-financials`, the latter awaiting merge. EPS takes the most precise reported reading across splits and is never computed from net income ÷ shares; see `DECISIONS.md`.)
-- (Done: `agent/xbrl-segments`. Done, awaiting merge: `agent/segments-tool`, the `breakdown` argument; see `DECISIONS.md`.)
+- (Done: `agent/xbrl-segments`. Done: `agent/segments-tool`, the `breakdown` argument; see `DECISIONS.md`.)
 - **NEXT: `agent/segment-metrics`, design note first.** Capture more per-segment metrics from the ASU 2023-07 disclosures (Apple cost of sales/operating expenses by region; Capital One provision, non-interest expense, pre-tax and net income by segment; NVIDIA depreciation). Needs hand-verified `METRICS` entries per company; balances (loans, deposits) are point-in-time and need the parser extended beyond full-year durations.
 - Then: 10-Q ingestion (a `form` column, fiscal quarter mapping, enabling `period`/`form` filters in `store.search`), `compare`, the agent eval, and `/agent/stream` plus UI.
 
