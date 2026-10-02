@@ -15,6 +15,16 @@ CREATE TABLE IF NOT EXISTS chunks(
 
 CREATE INDEX IF NOT EXISTS chunks_ticker_period_idx ON chunks (ticker, period);
 
+-- form: '10-K' or '10-Q'. fiscal_year / fiscal_period use the facts table's labels ('FY', 'Q1'-'Q3'), so a quarter's text
+-- lines up with its numbers. These ALTERs migrate databases created before the columns existed.
+ALTER TABLE chunks ADD COLUMN IF NOT EXISTS form TEXT NOT NULL DEFAULT '10-K';
+ALTER TABLE chunks ADD COLUMN IF NOT EXISTS fiscal_year INTEGER;
+ALTER TABLE chunks ADD COLUMN IF NOT EXISTS fiscal_period TEXT;
+-- existing rows are all 10-Ks: their period is the fiscal year end, and the fiscal year is the year it ends in
+UPDATE chunks SET fiscal_year = EXTRACT(YEAR FROM period::date)::int, fiscal_period = 'FY'
+    WHERE form = '10-K' AND fiscal_year IS NULL AND period LIKE '____-__-__';
+CREATE INDEX IF NOT EXISTS chunks_ticker_form_idx ON chunks (ticker, form, fiscal_year);
+
 -- segment '' means consolidated; per-segment rows share the table. axis says which breakdown a segment is on:
 -- 'product', 'segment' (business segment) or 'geography'; '' for consolidated rows
 CREATE TABLE IF NOT EXISTS facts(
@@ -58,46 +68,60 @@ def upsert_chunks(records: list[dict], vectors: list[list[float]]) -> None:
     params = []
     for record, vector in zip(records, vectors):
         params.append((record['id'], record['ticker'], record['period'],
-                       record['chunk_index'], record['text'], str(vector)))
+                       record['chunk_index'], record['text'], str(vector),
+                       record.get('form', '10-K'), record.get('fiscal_year'), record.get('fiscal_period')))
 
     with connect() as conn:
         with conn.cursor() as cur:
             cur.executemany(
                 """
-                INSERT INTO CHUNKS (id, ticker, period, chunk_index, text, embedding)
-                VALUES (%s, %s, %s, %s, %s, %s)
+                INSERT INTO CHUNKS (id, ticker, period, chunk_index, text, embedding, form, fiscal_year, fiscal_period)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (id) DO UPDATE SET
                     text = EXCLUDED.text,
-                    embedding = EXCLUDED.embedding
+                    embedding = EXCLUDED.embedding,
+                    form = EXCLUDED.form,
+                    fiscal_year = EXCLUDED.fiscal_year,
+                    fiscal_period = EXCLUDED.fiscal_period
                 """,
                 params,
             )
         conn.commit()
 
-def search(query_vector: list[float], k: int = 5, ticker: str | None = None) -> list[dict]:
-    vector = str(query_vector)
+def chunk_ids() -> set[str]:
+    """Every stored chunk id, so an index run can embed only what is new."""
+    with connect() as conn:
+        return {r[0] for r in conn.execute('SELECT id FROM chunks').fetchall()}
 
-    if ticker:
-        sql = """
-            SELECT id, ticker, period, text, embedding <=> %s::vector AS distance
-            FROM chunks
-            WHERE ticker = %s
-            ORDER BY embedding <=> %s::vector
-            LIMIT %s
-        """
-        params = (vector, ticker, vector, k)
-    else:
-        sql = """
-            SELECT id, ticker, period, text, embedding <=> %s::vector AS distance
-            FROM chunks
-            ORDER BY embedding <=> %s::vector
-            LIMIT %s
-        """
-        params = (vector, vector, k)
+def _where(ticker: str | None, form: str | None, fiscal_year: int | None, fiscal_period: str | None) -> tuple[str, list]:
+    """The WHERE clause and parameters for a filtered search; a filter left as None does not restrict."""
+    clauses, params = [], []
+    for column, value in (('ticker', ticker), ('form', form), ('fiscal_year', fiscal_year),
+                          ('fiscal_period', fiscal_period)):
+        if value is not None:
+            clauses.append(f'{column} = %s')
+            params.append(value)
+    return (' WHERE ' + ' AND '.join(clauses)) if clauses else '', params
+
+def search(query_vector: list[float], k: int = 5, ticker: str | None = None, form: str | None = None,
+           fiscal_year: int | None = None, fiscal_period: str | None = None) -> list[dict]:
+    """
+    Exact nearest neighbours by cosine distance among the chunks matching the filters. A filter left as None does not
+    restrict: form=None searches 10-Ks and 10-Qs together (pipeline.retrieve defaults to '10-K' so the fixed /ask
+    pipeline is unchanged).
+    """
+    vector = str(query_vector)
+    where, params = _where(ticker, form, fiscal_year, fiscal_period)
+    sql = f"""
+        SELECT id, ticker, period, text, embedding <=> %s::vector AS distance, form, fiscal_year, fiscal_period
+        FROM chunks{where}
+        ORDER BY embedding <=> %s::vector
+        LIMIT %s
+    """
 
     with connect() as conn:
         with conn.cursor() as cur:
-            cur.execute(sql, params)
+            cur.execute(sql, [vector, *params, vector, k])
             rows = cur.fetchall()
 
     results = []
@@ -107,7 +131,10 @@ def search(query_vector: list[float], k: int = 5, ticker: str | None = None) -> 
             'ticker': row[1],
             'period': row[2],
             'text': row[3],
-            'distance': row[4]
+            'distance': row[4],
+            'form': row[5],
+            'fiscal_year': row[6],
+            'fiscal_period': row[7],
         })
 
     return results

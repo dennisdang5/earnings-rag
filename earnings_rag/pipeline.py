@@ -2,7 +2,7 @@ import json
 import re
 from earnings_rag.config import settings
 from earnings_rag.embeddings import embed_batched, embed_texts
-from earnings_rag.store import init_schema, upsert_chunks, search
+from earnings_rag.store import init_schema, upsert_chunks, search, chunk_ids
 from earnings_rag.llm import generate
 
 COMPANY_PATTERNS = {
@@ -25,13 +25,17 @@ def detect_ticker(question: str) -> str | None:
 
     return None
 
-def build_index(limit: int | None = None) -> None:
+def build_index(limit: int | None = None, new_only: bool = False) -> None:
     path = settings.chunks_path
 
     records = []
     with path.open(encoding='utf-8') as f:
         for line in f:
             records.append(json.loads(line))
+
+    if new_only:  # embed only chunks the database does not have yet: re-embedding the rest costs money and changes nothing
+        have = chunk_ids()
+        records = [r for r in records if r['id'] not in have]
 
     if limit:
         records = records[:limit]
@@ -44,12 +48,15 @@ def build_index(limit: int | None = None) -> None:
     upsert_chunks(records, vectors)
     print(f'indexed {len(records)} chunks')
 
-def retrieve(question: str, k: int = 5, ticker: str | None = None, query_vector: list[float] | None = None, route: bool = True,) -> list[dict]:
+def retrieve(question: str, k: int = 5, ticker: str | None = None, query_vector: list[float] | None = None, route: bool = True,
+             form: str | None = '10-K', fiscal_year: int | None = None, fiscal_period: str | None = None) -> list[dict]:
     """
     Find the k nearest chunks such that an explicit ticker wins. Otherwise, a single named company in the question limits the search
     to that company.
 
     route: if the question names exactly one company, search only that company's chunks. An explicit ticker always wins.
+    form: '10-K' by default, which keeps the fixed /ask pipeline and the eval on annual reports as before the 10-Qs were
+    ingested; None searches every form. fiscal_year / fiscal_period ('FY', 'Q1'-'Q3') narrow further.
     if ticker is None and route:
         ticker = detect_ticker(question)
     """
@@ -59,7 +66,7 @@ def retrieve(question: str, k: int = 5, ticker: str | None = None, query_vector:
     if query_vector is None:
         query_vector = embed_texts([question])[0]
 
-    return search(query_vector, k=k, ticker=ticker)
+    return search(query_vector, k=k, ticker=ticker, form=form, fiscal_year=fiscal_year, fiscal_period=fiscal_period)
 
 def print_hits(hits: list[dict]) -> None:
     for hit in hits:
@@ -73,5 +80,6 @@ def ask(question: str, k: int = 5, ticker: str | None = None, route: bool = True
     return {'answer': answer, 'sources': hits}
 
 if __name__ == '__main__':
+    import sys
     init_schema()
-    build_index()
+    build_index(new_only='--new-only' in sys.argv)

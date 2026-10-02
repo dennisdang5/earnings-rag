@@ -1,5 +1,6 @@
 import requests
 from earnings_rag.config import settings
+from earnings_rag.quarters import select_quarters
 import time
 from pathlib import Path
 
@@ -83,6 +84,20 @@ def ingest_all() -> None:
             dest = DATA_RAW / ticker / f"{f['report_date']}.html"
             download_filing(url, dest)
             print(f"{ticker} {f['report_date']} -> {dest}")
+
+def ingest_quarters() -> None:
+    """Download the 10-Qs that line up with the ingested 10-Ks (see quarters.select_quarters) into data/raw/<ticker>/10-Q/."""
+    tm = load_ticker_map()
+    for ticker in settings.tickers:
+        tenks = sorted((settings.raw_dir / ticker).glob('*.html'))
+        if not tenks:
+            print(f'{ticker}: no 10-Ks ingested yet, run ingest_all first')
+            continue
+        cik = tm[ticker]
+        for f in select_quarters(get_filings(cik, '10-Q'), tenks[0].stem):
+            dest = settings.raw_dir / ticker / '10-Q' / f"{f['report_date']}.html"
+            download_filing(filing_url(cik, f['accession'], f['doc']), dest)
+            print(f"{ticker} 10-Q {f['report_date']} -> {dest}")
 
 if __name__ == '__main__':
     ingest_all()
