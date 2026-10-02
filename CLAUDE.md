@@ -66,7 +66,7 @@ python eval/run_eval.py --refusals                  # generation check, calls th
 - (Done: `agent/eps-precision` and `agent/get-financials`, the latter awaiting merge. EPS takes the most precise reported reading across splits and is never computed from net income ÷ shares; see `DECISIONS.md`.)
 - (Done: `agent/xbrl-segments`. Done: `agent/segments-tool`, the `breakdown` argument; see `DECISIONS.md`.)
 - (Done: `agent/segment-metrics`: cost of revenue, pre-tax income, provision, non-interest expense, loans and deposits, incl. balances.)
-- (Done, awaiting merge: `agent/metric-resolver`: synonym lists, identities, coverage report, tool availability from the database.)
+- (Done: `agent/metric-resolver`: synonym lists, identities, coverage report, tool availability from the database.)
 - **NEXT: `agent/calc-linkbase`, design note first.** Use each filing's calculation linkbase (`*_cal.xml`) to find a metric by its position in the company's own income statement (net income <- pre-tax <- operating income <- gross profit <- revenue and cost), including company-specific concepts the API drops (values from the inline XBRL), as the primary method with the resolver as fallback. Would catch UNH's pharmacy-only cost of revenue. Measure against the same 15 companies.
 - Then: 10-Q ingestion (a `form` column, fiscal quarter mapping, enabling `period`/`form` filters in `store.search`), `compare`, the agent eval, and `/agent/stream` plus UI.
 
