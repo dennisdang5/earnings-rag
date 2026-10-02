@@ -267,7 +267,7 @@ def _normalize_metric(rows: list[dict], ticker: str, metric: str, concept: str, 
         factor = split_factor(src['filed'], splits) if spec.get('per_share') else 1
         if factor != 1:
             value = round(value / factor, 6)
-        return {'ticker': ticker, 'metric': metric, 'segment': '', 'concept': concept,
+        return {'ticker': ticker, 'metric': metric, 'segment': '', 'axis': '', 'concept': concept,
                 'fiscal_year': fy, 'fiscal_period': period, 'period_start': start, 'period_end': end,
                 'value': value, 'unit': spec['unit'], 'derived': derived,
                 'form': src['form'], 'accession': src['accn'], 'filed': src['filed'], 'split_factor': factor}
@@ -369,8 +369,12 @@ def ingest_facts(refresh: bool = False) -> None:
         upsert_facts(rows)
         print(f'{ticker}: {len(rows)} facts ({sum(r["derived"] for r in rows)} derived)')
 
+        from earnings_rag.segments import ingest_segments  # segments imports this module, so not at the top
+        if not ingest_segments(ticker, facts):
+            failed.append(ticker)
+
     if failed:
-        raise SystemExit(f'split check failed for: {", ".join(failed)}')
+        raise SystemExit(f'ingestion check failed for: {", ".join(failed)}')
 
 
 if __name__ == '__main__':
