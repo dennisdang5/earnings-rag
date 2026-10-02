@@ -114,16 +114,40 @@ def test_year_to_date_only_metrics_are_differenced_into_quarters():
 
 
 def test_capital_one_revenue_uses_revenues_not_the_fee_only_concept():
+    # two revenue synonyms disagree; the larger is confirmed because net interest + non-interest income equals it
     cof_total = [fact('2023-01-01', '2023-12-31', 36_790 * M), fact('2024-01-01', '2024-12-31', 39_110 * M)]
     cof_fees = [fact('2023-01-01', '2023-12-31', 5_600 * M), fact('2024-01-01', '2024-12-31', 5_915 * M)]
+    nii = [fact('2023-01-01', '2023-12-31', 29_000 * M), fact('2024-01-01', '2024-12-31', 31_200 * M)]
+    nonii = [fact('2023-01-01', '2023-12-31', 7_790 * M), fact('2024-01-01', '2024-12-31', 7_910 * M)]
     rows = normalize(companyfacts(('Revenues', 'USD', cof_total),
-                                  ('RevenueFromContractWithCustomerExcludingAssessedTax', 'USD', cof_fees)), 'COF')
-    assert by_period(rows, 'revenue')[(2024, 'FY')]['value'] == 39_110 * M
+                                  ('RevenueFromContractWithCustomerExcludingAssessedTax', 'USD', cof_fees),
+                                  ('InterestIncomeExpenseNet', 'USD', nii), ('NoninterestIncome', 'USD', nonii)), 'COF')
+    revenue = by_period(rows, 'revenue')[(2024, 'FY')]
+    assert revenue['value'] == 39_110 * M and revenue['concept'] == 'Revenues'
 
 
-def test_metric_not_mapped_for_a_company_is_absent():
+def test_disagreeing_revenue_synonyms_that_no_identity_confirms_are_not_stored():
+    rows = normalize(companyfacts(
+        ('Revenues', 'USD', [fact('2023-01-01', '2023-12-31', 100 * M), fact('2024-01-01', '2024-12-31', 120 * M)]),
+        ('RevenueFromContractWithCustomerExcludingAssessedTax', 'USD',
+         [fact('2023-01-01', '2023-12-31', 90 * M), fact('2024-01-01', '2024-12-31', 110 * M)])), 'XYZ')
+    assert 'revenue' not in {r['metric'] for r in rows}
+
+
+def test_a_company_that_switched_revenue_concepts_keeps_every_year_and_names_the_concept():
+    old = [fact('2022-01-01', '2022-12-31', 80 * M)]
+    new = [fact('2023-01-01', '2023-12-31', 100 * M), fact('2024-01-01', '2024-12-31', 120 * M)]
+    out = by_period(normalize(companyfacts(('SalesRevenueNet', 'USD', old),
+                                           ('RevenueFromContractWithCustomerExcludingAssessedTax', 'USD', new)),
+                              'XYZ'), 'revenue')
+    assert [out[(fy, 'FY')]['value'] // M for fy in (2022, 2023, 2024)] == [80, 100, 120]
+    assert out[(2022, 'FY')]['concept'] == 'SalesRevenueNet'
+    assert out[(2024, 'FY')]['concept'] == 'RevenueFromContractWithCustomerExcludingAssessedTax'
+
+
+def test_metric_with_no_concept_in_the_data_is_absent():
     rows = [fact('2023-01-01', '2023-12-31', 1), fact('2024-01-01', '2024-12-31', 2)]
-    assert normalize(companyfacts(('GrossProfit', 'USD', rows)), 'COF') == []
+    assert 'gross_profit' not in {r['metric'] for r in normalize(companyfacts(('Revenues', 'USD', rows)), 'COF')}
 
 
 def test_instant_facts_without_a_start_date_are_ignored():
@@ -338,11 +362,19 @@ def test_reverse_split_rounding_is_not_a_mismatch():
 
 # --- ingestion safety net ----------------------------------------------------------------------------------------
 
+def with_core_metrics(cf):
+    """The metrics resolve() insists on (every company has them), alongside whatever a test is about."""
+    year = fact('2021-01-31', '2022-01-30', 1)
+    for concept in ('Revenues', 'NetIncomeLoss', 'NetCashProvidedByUsedInOperatingActivities'):
+        cf['facts']['us-gaap'][concept] = {'units': {'USD': [year]}}
+    return cf
+
+
 def stub_ingest(monkeypatch, cf):
     """Run ingest_facts for one ticker against canned facts and a fake store; returns what would be stored."""
     stored = []
     monkeypatch.setattr(xbrl.settings, 'tickers', ['NVDA'])
-    monkeypatch.setattr(xbrl, 'fetch_companyfacts', lambda ticker, refresh=False: cf)
+    monkeypatch.setattr(xbrl, 'fetch_companyfacts', lambda ticker, refresh=False: with_core_metrics(cf))
     monkeypatch.setattr('earnings_rag.store.init_schema', lambda: None)
     monkeypatch.setattr('earnings_rag.store.upsert_facts', stored.append)
     monkeypatch.setattr('earnings_rag.segments.ingest_segments', lambda ticker, cf: True)  # reads data/raw, not hermetic

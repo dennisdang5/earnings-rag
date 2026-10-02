@@ -18,7 +18,8 @@ def row(**over):
     return {**base, **over}
 
 
-def call(monkeypatch, rows=(), years=(2020, 2027), breakdowns=(), **args):
+def call(monkeypatch, rows=(), years=(2020, 2027), breakdowns=(), metrics=('revenue', 'gross_profit', 'eps_diluted'),
+         **args):
     seen = {}
 
     def fake_get_facts(ticker, metric, fiscal_year, fiscal_period, limit):
@@ -28,6 +29,7 @@ def call(monkeypatch, rows=(), years=(2020, 2027), breakdowns=(), **args):
     monkeypatch.setattr(tools_module, 'get_facts', fake_get_facts)
     monkeypatch.setattr(tools_module, 'fact_years', lambda t, m: years)
     monkeypatch.setattr(tools_module, 'available_breakdowns', lambda t, corporate: list(breakdowns))
+    monkeypatch.setattr(tools_module, 'available_metrics', lambda t: list(metrics))
     return json.loads(GET_FINANCIALS.call(json.dumps(args))), seen
 
 
@@ -51,7 +53,7 @@ def test_split_adjusted_eps_also_gives_the_as_reported_figure():
 
 
 def test_unreported_metric_for_a_company_is_an_error_naming_the_alternatives(monkeypatch):
-    out, _ = call(monkeypatch, company='COF', metric='gross_profit')
+    out, _ = call(monkeypatch, metrics=('revenue', 'net_interest_income'), company='COF', metric='gross_profit')
     assert 'COF does not report gross_profit' in out['error']
     assert 'net_interest_income' in out['error']
 
@@ -182,3 +184,15 @@ def test_plain_result_lists_the_breakdowns_the_company_has(monkeypatch):
                               ('revenue', 'product', 2020, 2025)])
     assert 'cost_of_revenue by product, segment; revenue by product' in out['note']
     assert 'note' not in call(monkeypatch, rows=[row()], company='NVDA', metric='revenue')[0]  # none stored: no note
+
+
+def test_profit_metric_results_remind_the_model_that_a_margin_divides_by_revenue(monkeypatch):
+    out, _ = call(monkeypatch, rows=[row(metric='gross_profit')], company='AAPL', metric='gross_profit')
+    assert 'margin is this figure divided by revenue' in out['note']
+    assert 'note' not in call(monkeypatch, rows=[row()], company='NVDA', metric='revenue')[0]
+
+
+def test_metric_availability_comes_from_what_was_stored(monkeypatch):
+    monkeypatch.setattr(tools_module, 'available_metrics', lambda ticker: ['revenue', 'deposits'])
+    out = json.loads(GET_FINANCIALS.call(json.dumps({'company': 'COF', 'metric': 'gross_profit'})))
+    assert 'COF does not report gross_profit' in out['error'] and 'revenue, deposits' in out['error']

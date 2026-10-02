@@ -5,63 +5,12 @@ from datetime import date, timedelta
 from statistics import median
 
 from earnings_rag.config import settings
+from earnings_rag.resolver import METRICS, resolve, describe  # noqa: F401  (METRICS is imported from here elsewhere)
 
 MIN_FISCAL_YEAR = 2020
 
-# metric -> the XBRL concept each company uses for it. Hand-verified against the real data: the "standard" concept
-# is not always right (Capital One's RevenueFromContractWithCustomer... is only its fee revenue, ~1/7 of Revenues).
-# additive=False for per-share values: share counts change, so FY EPS minus 9-month EPS is not Q4 EPS.
-# per_share=True values are rescaled to today's share count (see find_splits).
-METRICS = {
-    'revenue': {
-        'concepts': {'NVDA': 'Revenues', 'COF': 'Revenues',
-                     'AAPL': 'RevenueFromContractWithCustomerExcludingAssessedTax'},
-        'unit': 'USD', 'additive': True},
-    'net_income': {
-        'concepts': {t: 'NetIncomeLoss' for t in ('NVDA', 'AAPL', 'COF')},
-        'unit': 'USD', 'additive': True},
-    'eps_diluted': {
-        'concepts': {t: 'EarningsPerShareDiluted' for t in ('NVDA', 'AAPL', 'COF')},
-        'unit': 'USD/shares', 'additive': False, 'per_share': True},
-    'operating_cash_flow': {
-        'concepts': {t: 'NetCashProvidedByUsedInOperatingActivities' for t in ('NVDA', 'AAPL', 'COF')},
-        'unit': 'USD', 'additive': True},
-    'gross_profit': {
-        'concepts': {t: 'GrossProfit' for t in ('NVDA', 'AAPL')},
-        'unit': 'USD', 'additive': True},
-    'operating_income': {
-        'concepts': {t: 'OperatingIncomeLoss' for t in ('NVDA', 'AAPL')},
-        'unit': 'USD', 'additive': True},
-    'rnd_expense': {
-        'concepts': {t: 'ResearchAndDevelopmentExpense' for t in ('NVDA', 'AAPL')},
-        'unit': 'USD', 'additive': True},
-    'net_interest_income': {
-        'concepts': {'COF': 'InterestIncomeExpenseNet'},
-        'unit': 'USD', 'additive': True},
-    'noninterest_income': {
-        'concepts': {'COF': 'NoninterestIncome'},
-        'unit': 'USD', 'additive': True},
-    'cost_of_revenue': {
-        'concepts': {'NVDA': 'CostOfRevenue', 'AAPL': 'CostOfGoodsAndServicesSold'},
-        'unit': 'USD', 'additive': True},
-    'pretax_income': {
-        'concepts': {t: 'IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest'
-                     for t in ('NVDA', 'AAPL', 'COF')},
-        'unit': 'USD', 'additive': True},
-    'provision_for_credit_losses': {
-        'concepts': {'COF': 'ProvisionForLoanLossesExpensed'},
-        'unit': 'USD', 'additive': True},
-    'noninterest_expense': {
-        'concepts': {'COF': 'NoninterestExpense'},
-        'unit': 'USD', 'additive': True},
-    # balance=True: a value on a date (the period's last day), not an amount over the period. Never added or derived.
-    'loans': {
-        'concepts': {'COF': 'NotesReceivableGross'},
-        'unit': 'USD', 'additive': False, 'balance': True},
-    'deposits': {
-        'concepts': {'COF': 'Deposits'},
-        'unit': 'USD', 'additive': False, 'balance': True},
-}
+# METRICS (metric -> synonym concepts) and resolve() live in resolver.py; the concepts a company uses are decided per
+# company from its own data, not from a hand-kept map.
 
 SHARES_CONCEPT = 'WeightedAverageNumberOfDilutedSharesOutstanding'
 
@@ -287,7 +236,7 @@ def _normalize_metric(rows: list[dict], ticker: str, metric: str, concept: str, 
         factor = split_factor(src['filed'], splits) if spec.get('per_share') else 1
         if factor != 1:
             value = round(value / factor, 6)
-        return {'ticker': ticker, 'metric': metric, 'segment': '', 'axis': '', 'concept': concept,
+        return {'ticker': ticker, 'metric': metric, 'segment': '', 'axis': '', 'concept': src.get('concept', concept),
                 'fiscal_year': fy, 'fiscal_period': period, 'period_start': start, 'period_end': end,
                 'value': value, 'unit': spec['unit'], 'derived': derived,
                 'form': src['form'], 'accession': src['accn'], 'filed': src['filed'], 'split_factor': factor}
@@ -305,21 +254,44 @@ def _normalize_metric(rows: list[dict], ticker: str, metric: str, concept: str, 
             if period in cum or total not in cum or earlier not in cum:
                 continue
             t, e = cum[total], cum[earlier]
+            if t.get('concept') != e.get('concept'):
+                continue  # a company that switched concepts mid-year: the two are not one series, so no subtraction
             start = (date.fromisoformat(e['end']) + timedelta(days=1)).isoformat()
             out.append(emit(fy, period, t, t['val'] - e['val'], start, t['end'], True))
     return out
 
 
-def _fiscal_years(gaap: dict, ticker: str) -> list[tuple]:
+def _merge_synonyms(gaap: dict, concepts: list[str], unit: str) -> list[dict]:
+    """
+    Rows for one metric from all of its synonym concepts. Where several report the same period the largest wins, since a
+    smaller look-alike is a part of the total (Capital One's fee-only revenue concept next to Revenues). Each row is
+    tagged with the concept it came from, so a company that switched concepts between years stays traceable.
+    """
+    rows_by_concept = {c: [dict(r, concept=c) for r in gaap[c]['units'].get(unit, [])] for c in concepts if c in gaap}
+    if len(rows_by_concept) == 1:
+        return next(iter(rows_by_concept.values()))
+
+    latest: dict[tuple, dict[str, tuple]] = {}   # period -> concept -> (filed, value)
+    for c, rows in rows_by_concept.items():
+        for r in rows:
+            seen = latest.setdefault((r.get('start'), r['end']), {})
+            if c not in seen or r['filed'] > seen[c][0]:
+                seen[c] = (r['filed'], r['val'])
+    winner = {key: max(by_concept, key=lambda c: by_concept[c][1]) for key, by_concept in latest.items()}
+    return [r for rows in rows_by_concept.values() for r in rows if winner[(r.get('start'), r['end'])] == r['concept']]
+
+
+def _fiscal_years(gaap: dict, res) -> list[tuple]:
     """(fiscal year, start, end) for every full year any of the company's flow metrics covers, oldest first."""
     annual = set()
-    for spec in METRICS.values():
-        concept = spec['concepts'].get(ticker)
-        if spec.get('balance') or concept not in gaap:
+    for metric, concepts in res.chosen.items():
+        spec = METRICS[metric]
+        if spec.get('balance'):
             continue
-        for r in gaap[concept]['units'].get(spec['unit'], []):
-            if 'start' in r and _classify(_days(r)) == 'FY':
-                annual.add((r['start'], r['end']))
+        for concept in concepts:
+            for r in gaap.get(concept, {}).get('units', {}).get(spec['unit'], []):
+                if 'start' in r and _classify(_days(r)) == 'FY':
+                    annual.add((r['start'], r['end']))
     years = {}
     for s, e in annual:  # a restated year can carry slightly different dates; keep the latest-ending reading per year
         fy = date.fromisoformat(e).year
@@ -368,18 +340,16 @@ def normalize(companyfacts: dict, ticker: str) -> list[dict]:
     """
     gaap = companyfacts['facts']['us-gaap']
     splits = find_splits(companyfacts, ticker)
-    years = _fiscal_years(gaap, ticker)
+    res = resolve(companyfacts, ticker)
+    years = _fiscal_years(gaap, res)
     out = []
-    for metric, spec in METRICS.items():
-        concept = spec['concepts'].get(ticker)
-        if concept is None or concept not in gaap:
-            continue
+    for metric, concepts in res.chosen.items():
+        spec, concept = METRICS[metric], res.primary[metric]
+        rows = _merge_synonyms(gaap, concepts, spec['unit'])
         if spec.get('balance'):
-            out.extend(_normalize_balance(gaap[concept]['units'].get(spec['unit'], []), ticker, metric, concept, spec,
-                                          years))
+            out.extend(_normalize_balance(rows, ticker, metric, concept, spec, years))
             continue
-        out.extend(_normalize_metric(gaap[concept]['units'].get(spec['unit'], []), ticker, metric, concept, spec,
-                                       splits))
+        out.extend(_normalize_metric(rows, ticker, metric, concept, spec, splits))
     out.sort(key=lambda r: (r['metric'], r['fiscal_year'], PERIOD_ORDER[r['fiscal_period']]))
     return out
 
@@ -396,11 +366,11 @@ def check_split_consistency(companyfacts: dict, ticker: str, splits: list[tuple[
     gaap = companyfacts['facts']['us-gaap']
     checked, bad = 0, []
     for metric, spec in METRICS.items():
-        concept = spec['concepts'].get(ticker)
-        if not spec.get('per_share') or concept not in gaap:
+        if not spec.get('per_share'):
             continue
+        concepts = [c for c in spec['synonyms'] if c in gaap]
         by_period: dict[tuple[str, str], dict[str, float]] = {}
-        for r in gaap[concept]['units'].get(spec['unit'], []):
+        for r in _merge_synonyms(gaap, concepts, spec['unit']):
             if 'start' in r and r['end'] >= f'{MIN_FISCAL_YEAR - 1}-01-01':
                 by_period.setdefault((r['start'], r['end']), {})[r['filed']] = r['val']
 
@@ -429,6 +399,14 @@ def ingest_facts(refresh: bool = False) -> None:
     failed = []
     for ticker in settings.tickers:
         facts = fetch_companyfacts(ticker, refresh)
+
+        res = resolve(facts, ticker)
+        for line in describe(ticker, res):
+            print(line)
+        if res.no_data or res.missing_core:
+            print(f'{ticker}: a core metric could not be resolved, not stored')
+            failed.append(ticker)
+            continue
 
         checked, bad = check_split_consistency(facts, ticker, find_splits(facts, ticker))
         split_sized = [b for b in bad if b['kind'] == 'split']

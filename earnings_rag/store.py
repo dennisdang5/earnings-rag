@@ -225,6 +225,14 @@ def fact_years(ticker: str, metric: str, segment: str = '') -> tuple[int, int] |
                            'WHERE ticker = %s AND metric = %s AND segment = %s', (ticker, metric, segment)).fetchone()
     return None if row[0] is None else (row[0], row[1])
 
+def available_metrics(ticker: str) -> list[str]:
+    """Metrics with consolidated rows for a company, in METRICS order: what the company reports, as resolved at ingest."""
+    from earnings_rag.resolver import METRICS
+    with connect() as conn:
+        have = {r[0] for r in conn.execute("SELECT DISTINCT metric FROM facts WHERE ticker = %s AND axis = '' "
+                                           "AND segment = ''", (ticker,)).fetchall()}
+    return [m for m in METRICS if m in have]
+
 def get_breakdown(ticker: str, metric: str, axis: str, fiscal_year: int | None = None, years: int = 2) -> list[dict]:
     """Every slice on one axis, for the given fiscal year or the latest `years` years. Latest first, largest first."""
     sql = f'SELECT {", ".join(FACT_COLUMNS)} FROM facts WHERE ticker = %s AND metric = %s AND axis = %s'
