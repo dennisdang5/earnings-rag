@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field, ValidationError
 from earnings_rag.calc import evaluate
 from earnings_rag.pipeline import retrieve
 from earnings_rag.segments import CORPORATE, find_parts
-from earnings_rag.store import get_facts, fact_years, get_breakdown, available_breakdowns, breakdown_names
+from earnings_rag.store import get_facts, fact_years, get_breakdown, available_breakdowns, breakdown_names, available_metrics
 from earnings_rag.xbrl import METRICS
 
 
@@ -101,7 +101,6 @@ CALCULATE = Tool(
 )
 
 COMPANIES = ('NVDA', 'AAPL', 'COF')
-AVAILABLE = {t: [m for m, spec in METRICS.items() if t in spec['concepts']] for t in COMPANIES}
 DEFAULT_FACT_ROWS = 8  # the latest two years of quarters and their FY rows; every row is re-sent on later calls
 BREAKDOWN_YEARS = 2    # without a fiscal year, a breakdown covers two years so a growth question takes one call
 
@@ -191,9 +190,10 @@ def get_financials(args: GetFinancialsArgs) -> dict:
     if METRICS[args.metric].get('balance') and args.period == 'Q4':
         return {'error': f'{args.metric} is a balance on a date: the fiscal year end is period FY, '
                          f'and Q1-Q3 are the quarter ends.'}
-    if args.metric not in AVAILABLE[args.company]:
+    available = available_metrics(args.company)
+    if args.metric not in available:
         return {'error': f'{args.company} does not report {args.metric}. '
-                         f'Available for {args.company}: {", ".join(AVAILABLE[args.company])}'}
+                         f'Available for {args.company}: {", ".join(available)}'}
 
     rows = get_facts(args.company, args.metric, args.fiscal_year, args.period, limit=DEFAULT_FACT_ROWS)
     if not rows:
@@ -201,6 +201,9 @@ def get_financials(args: GetFinancialsArgs) -> dict:
         span = f'fiscal years {years[0]}-{years[1]}' if years else 'no years'
         return {'results': [], 'note': f'No matching data. {args.company} {args.metric} is available for {span}.'}
     out = {'results': [fact_result(r) for r in rows]}
+    if METRICS[args.metric].get('profit') and not args.breakdown:
+        # The model fetched gross profit, then cost of revenue, and divided by the cost: -14.10% (4 of 8 runs)
+        out['note'] = f'A {args.metric.replace("_", " ")} margin is this figure divided by revenue.'
     # Without this the model computed Apple's company-wide margin and called it Services', never learning that cost of
     # revenue can be split by product (3 of 3 runs)
     available = available_breakdowns(args.company, CORPORATE)
@@ -208,7 +211,7 @@ def get_financials(args: GetFinancialsArgs) -> dict:
         by_metric: dict[str, list[str]] = {}
         for metric, axis, _, _ in available:
             by_metric.setdefault(metric, []).append(axis)
-        out['note'] = (f'Breakdowns available for {args.company} (set breakdown to get one slice such as a product '
+        out['note'] = (out.get('note', '') + f' Breakdowns available for {args.company} (set breakdown to get one slice such as a product '
                        f'line or segment): ' + '; '.join(f'{m} by {", ".join(axes)}' for m, axes in by_metric.items()))
     return out
 
@@ -225,8 +228,9 @@ GET_FINANCIALS = Tool(
         'region (Services, Data Center, Americas, Credit Card), set breakdown: a company-wide figure is not a '
         'substitute for part of the company, and a margin for that part needs its revenue and its cost of revenue, '
         'both with the same breakdown. '
-        'Metrics per company: '
-        + '; '.join(f'{t}: {", ".join(ms)}' for t, ms in AVAILABLE.items()) + '.'
+        'A margin is a profit metric divided by revenue (gross profit / revenue), never by a cost. '
+        'Metrics: ' + ', '.join(METRICS) + '. Not every company reports every metric (a bank has no gross profit); '
+        'asking for one it does not report returns an error listing what it does.'
     ),
     args_model=GetFinancialsArgs,
     fn=get_financials,

@@ -6,6 +6,11 @@ from earnings_rag.segments import (parse_inline, member_name, normalize_segments
 
 M = 1_000_000
 
+# the metric -> concept maps the resolver would give each company
+NVDA = {'revenue': 'Revenues', 'operating_income': 'OperatingIncomeLoss'}
+AAPL = {'revenue': 'RevenueFromContractWithCustomerExcludingAssessedTax'}
+COF = {'revenue': 'Revenues', 'deposits': 'Deposits'}
+
 
 def ixbrl(contexts, facts):
     """contexts: {id: (start, end, [(axis, member)])}, facts: [(concept, context id, text, extra attributes)]."""
@@ -38,7 +43,7 @@ def test_scale_sign_and_fixed_zero_are_applied():
                  [('Revenues', 'a', '115,186', 'scale="6"'), ('Revenues', 'b', '1.5', 'scale="9"'),
                   ('Revenues', 'c', '—', 'format="ixt:fixed-zero" scale="6"'),
                   ('Revenues', 'd', '389', 'scale="6" sign="-"')])
-    got = by_key(parse_inline(html, 'NVDA'))
+    got = by_key(parse_inline(html, NVDA))
     assert got[('revenue', 'product', 'Data Center')] == 115_186 * M
     assert got[('revenue', 'product', 'Gaming')] == 1_500 * M
     assert got[('revenue', 'product', 'Automotive')] == 0
@@ -50,8 +55,8 @@ def test_segment_with_and_without_the_operating_segments_qualifier_is_the_same_s
                 [('RevenueFromContractWithCustomerExcludingAssessedTax', 'a', '100', 'scale="6"')])
     new = ixbrl({'a': (*FY, [(ITEMS, 'us-gaap:OperatingSegmentsMember'), (SEGMENT, 'aapl:AmericasSegmentMember')])},
                 [('RevenueFromContractWithCustomerExcludingAssessedTax', 'a', '100', 'scale="6"')])
-    assert parse_inline(old, 'AAPL') == parse_inline(new, 'AAPL')
-    assert parse_inline(new, 'AAPL')[0]['segment'] == 'Americas'
+    assert parse_inline(old, AAPL) == parse_inline(new, AAPL)
+    assert parse_inline(new, AAPL)[0]['segment'] == 'Americas'
 
 
 def test_renamed_member_gives_the_same_name():
@@ -68,20 +73,20 @@ def test_contexts_with_several_dimensions_or_other_axes_are_skipped():
                   'c': (*FY, [(ITEMS, 'us-gaap:OperatingSegmentsMember')]),   # total of the segments
                   'd': ('2025-01-26', '2025-01-26', [])},                      # instant
                 [('Revenues', c, '5', 'scale="6"') for c in 'abcd'])
-    assert parse_inline(html, 'COF') == []
+    assert parse_inline(html, COF) == []
 
 
 def test_quarterly_and_unmapped_concepts_are_ignored():
     html = ixbrl({'q': ('2024-10-28', '2025-01-26', []), 'y': (*FY, [])},
                  [('Revenues', 'q', '5', 'scale="6"'), ('SomethingElse', 'y', '5', 'scale="6"')])
-    assert parse_inline(html, 'NVDA') == []
+    assert parse_inline(html, NVDA) == []
 
 
 def test_a_corporate_item_that_repeats_the_segment_total_is_dropped():
     html = ixbrl({'t': (*FY, [(ITEMS, 'us-gaap:OperatingSegmentsMember')]),
                   'c': (*FY, [(ITEMS, 'us-gaap:CorporateNonSegmentMember')])},
                  [('OperatingIncomeLoss', 't', '87,960', 'scale="6"'), ('OperatingIncomeLoss', 'c', '87,960', 'scale="6"')])
-    assert parse_inline(html, 'NVDA') == []
+    assert parse_inline(html, NVDA) == []
 
 
 def companyfacts(*rows):
@@ -96,8 +101,8 @@ def test_cross_check_catches_a_scale_error_in_the_parser():
     right = ixbrl({'a': (*FY, [])}, [('Revenues', 'a', '130,497', 'scale="6"')])
     wrong = ixbrl({'a': (*FY, [])}, [('Revenues', 'a', '130,497', 'scale="3"')])
     facts = companyfacts(api(130_497 * M))
-    assert cross_check({'x': parse_inline(right, 'NVDA')}, facts, 'NVDA') == (1, [])
-    checked, bad = cross_check({'x': parse_inline(wrong, 'NVDA')}, facts, 'NVDA')
+    assert cross_check({'x': parse_inline(right, NVDA)}, facts, 'NVDA') == (1, [])
+    checked, bad = cross_check({'x': parse_inline(wrong, NVDA)}, facts, 'NVDA')
     assert checked == 1 and len(bad) == 1
 
 
@@ -224,7 +229,7 @@ def test_balances_are_read_only_at_a_fiscal_year_end():
                         b'<xbrli:instant>2024-12-31</xbrli:instant>')
     html = html.replace(b'<xbrli:startDate>2024-06-30</xbrli:startDate><xbrli:endDate>2024-06-30</xbrli:endDate>',
                         b'<xbrli:instant>2024-06-30</xbrli:instant>')
-    [r] = parse_inline(html, 'COF')
+    [r] = parse_inline(html, COF)
     assert (r['metric'], r['segment'], r['value'], r['period_end']) == ('deposits', 'Consumer Banking', 318_329 * M,
                                                                        '2024-12-31')
 
@@ -236,4 +241,4 @@ def test_cross_check_compares_a_balance_with_the_apis_date_only_value():
         b'<xbrli:instant>2024-12-31</xbrli:instant>')
     facts = {'facts': {'us-gaap': {'Deposits': {'units': {'USD': [
         {'end': '2024-12-31', 'val': 362_707 * M, 'accn': 'a', 'form': '10-K', 'filed': '2025-02-20'}]}}}}}
-    assert cross_check({'x': parse_inline(html, 'COF')}, facts, 'COF') == (1, [])
+    assert cross_check({'x': parse_inline(html, COF)}, facts, 'COF') == (1, [])

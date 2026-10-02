@@ -4,6 +4,7 @@ from datetime import date
 from bs4 import BeautifulSoup
 
 from earnings_rag.config import settings
+from earnings_rag.resolver import resolve
 from earnings_rag.xbrl import METRICS, _classify
 
 # The three standard axes that carry breakdowns, the same for every company.
@@ -79,7 +80,7 @@ def _number(tag) -> float | None:
     return -value if tag.get('sign') == '-' else value
 
 
-def parse_inline(html: bytes, ticker: str) -> list[dict]:
+def parse_inline(html: bytes, concepts: dict[str, str]) -> list[dict]:
     """
     Every full-year fact (and fiscal-year-end balance) in a 10-K's inline XBRL for a metric in METRICS, one row per (metric, axis, member, year).
     axis '' means consolidated. Pure: no network, no database.
@@ -103,8 +104,9 @@ def parse_inline(html: bytes, ticker: str) -> list[dict]:
     year_ends = {end for _, start, end in contexts.values()
                  if start is not None and _classify((date.fromisoformat(end) - date.fromisoformat(start)).days) == 'FY'}
 
-    concept_metric = {spec['concepts'][ticker]: metric for metric, spec in METRICS.items()
-                      if ticker in spec['concepts'] and spec['unit'] == 'USD'}
+    # one concept per metric, the one the company uses (resolver.primary): reading a smaller look-alike concept as well
+    # would collide with it on the same slice
+    concept_metric = {concept: metric for metric, concept in concepts.items() if METRICS[metric]['unit'] == 'USD'}
     found = {}
     for tag in soup.find_all('nonFraction'):
         concept = tag.get('name', '').split(':')[-1]
@@ -137,12 +139,12 @@ def parse_inline(html: bytes, ticker: str) -> list[dict]:
                      and totals.get((f['metric'], f['period_start'], f['period_end'])) == f['value'])]
 
 
-def _filing_for(companyfacts: dict, ticker: str, report_date: str) -> dict | None:
+def _filing_for(companyfacts: dict, concepts: dict[str, str], report_date: str) -> dict | None:
     """The 10-K (accession, filed) that first reported this fiscal year end. The HTML does not say."""
     gaap = companyfacts['facts']['us-gaap']
     best = None
-    for spec in METRICS.values():
-        for r in gaap.get(spec['concepts'].get(ticker), {}).get('units', {}).get(spec['unit'], []):
+    for metric, concept in concepts.items():
+        for r in gaap.get(concept, {}).get('units', {}).get(METRICS[metric]['unit'], []):
             if r['end'] == report_date and r['form'] == '10-K' and (best is None or r['filed'] < best['filed']):
                 best = r
     return best
@@ -157,9 +159,10 @@ def normalize_segments(parsed: dict[str, list[dict]], companyfacts: dict, ticker
     row next to the new US/China/Taiwan rows, and the year summed to 154,181 against a 130,497 total. So each
     (metric, axis, fiscal year) comes entirely from the latest filing that reports it.
     """
+    concepts = resolve(companyfacts, ticker).primary
     groups: dict[tuple, list[dict]] = {}
     for report_date in sorted(parsed):
-        filing = _filing_for(companyfacts, ticker, report_date)
+        filing = _filing_for(companyfacts, concepts, report_date)
         if filing is None:
             continue
         this_filing: dict[tuple, list[dict]] = {}
@@ -260,7 +263,8 @@ def ingest_segments(ticker: str, companyfacts: dict) -> bool:
     from earnings_rag import xbrl
     from earnings_rag.store import replace_segment_facts
 
-    parsed = {p.stem: parse_inline(p.read_bytes(), ticker) for p in sorted((settings.raw_dir / ticker).glob('*.html'))}
+    concepts = resolve(companyfacts, ticker).primary
+    parsed = {p.stem: parse_inline(p.read_bytes(), concepts) for p in sorted((settings.raw_dir / ticker).glob('*.html'))}
     checked, bad = cross_check(parsed, companyfacts, ticker)
     print(f'{ticker}: segment parser check: {checked} consolidated values vs the SEC API, {len(bad)} mismatches')
     for b in bad[:5]:
