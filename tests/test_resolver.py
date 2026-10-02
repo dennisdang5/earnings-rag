@@ -93,6 +93,7 @@ def test_ingest_refuses_a_ticker_with_a_missing_core_metric(monkeypatch, capsys)
     monkeypatch.setattr(xbrl.settings, 'tickers', ['XYZ'])
     monkeypatch.setattr(xbrl, 'fetch_companyfacts', lambda ticker, refresh=False: cf)
     monkeypatch.setattr('earnings_rag.store.init_schema', lambda: None)
+    monkeypatch.setattr(xbrl, 'attach_income_statement', lambda facts, ticker, refresh=False: False)  # network
     stored = []
     monkeypatch.setattr('earnings_rag.store.upsert_facts', stored.append)
     with pytest.raises(SystemExit):

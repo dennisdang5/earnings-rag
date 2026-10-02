@@ -392,6 +392,26 @@ def check_split_consistency(companyfacts: dict, ticker: str, splits: list[tuple[
     return checked, bad
 
 
+def attach_income_statement(facts: dict, ticker: str, refresh: bool = False) -> bool:
+    """
+    Parse the latest 10-K's calculation linkbase and attach the income statement's tree as facts['income_statement'],
+    which resolve() uses as a second opinion. Returns False, leaving the resolver to work without it, when the filing
+    has no usable calculation file or the download fails: the tree improves a resolution, it is not required for one.
+    """
+    from earnings_rag import statements
+    try:
+        xml = statements.fetch_calc(ticker, facts, refresh)
+    except Exception as e:  # network or SEC error
+        print(f'{ticker}: calculation linkbase not available ({e}); resolving without the income statement')
+        return False
+    tree = statements.income_statement(statements.parse_calc(xml)) if xml else None
+    if tree is None:
+        print(f'{ticker}: no income statement in the calculation linkbase; resolving without it')
+        return False
+    facts['income_statement'] = tree
+    return True
+
+
 def ingest_facts(refresh: bool = False) -> None:
     from earnings_rag.store import init_schema, upsert_facts
 
@@ -399,6 +419,7 @@ def ingest_facts(refresh: bool = False) -> None:
     failed = []
     for ticker in settings.tickers:
         facts = fetch_companyfacts(ticker, refresh)
+        attach_income_statement(facts, ticker, refresh)
 
         res = resolve(facts, ticker)
         for line in describe(ticker, res):

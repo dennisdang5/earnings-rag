@@ -1,6 +1,8 @@
 from dataclasses import dataclass, field
 from datetime import date
 
+from earnings_rag import statements
+
 # metric -> the XBRL concepts that mean it. Written once, for every company: a company-specific map does not scale to
 # many tickers. Only true synonyms belong here; look-alikes are different numbers and must stay out ("pre-tax income,
 # domestic" is only the US part, "interest and dividend income" is gross, not net, interest).
@@ -52,6 +54,11 @@ OVERRIDES = {
 # Every company has these, so a missing one means a synonym is missing here, not a fact about the company.
 CORE = ('revenue', 'net_income', 'eps_diluted', 'operating_cash_flow')
 
+# Metrics the income statement may supply when no synonym matched: the concept at the metric's position in the company's
+# own arithmetic (statements.positions), if it is a standard concept with data in the SEC facts.
+DISCONTINUED_AFTER = 2   # fiscal years behind the company's latest before a metric counts as no longer reported
+FILLABLE = ('revenue', 'pretax_income', 'cost_of_revenue', 'provision_for_credit_losses')
+
 TOLERANCE = 1e6          # an identity holds if it is within a million dollars: the filings round to millions
 AMBIGUITY = 0.001        # synonyms whose values differ by less than this (relative) are the same number
 
@@ -65,8 +72,12 @@ class Resolution:
     pinned: list[tuple[str, str]] = field(default_factory=list)  # overrides that applied
     checks: list[tuple[str, bool]] = field(default_factory=list)  # accounting identities, report-only
     suggestions: dict[str, list[str]] = field(default_factory=dict)
+    discontinued: list[str] = field(default_factory=list)       # metrics no longer reported (2+ fiscal years behind): not stored
+    stale: dict[str, int] = field(default_factory=dict)          # metric -> last fiscal year reported, if before the company's latest
+    notes: list[str] = field(default_factory=list)               # what the income statement said that the SEC facts cannot supply
     missing_core: list[str] = field(default_factory=list)
     is_bank: bool = False
+    latest_fy: int | None = None
     no_data: bool = False
 
 
@@ -79,9 +90,11 @@ def _rows(gaap: dict, concept: str, unit: str) -> list[dict]:
 
 
 def _latest_annual_end(gaap: dict) -> str | None:
-    """The latest fiscal year end any flow metric has a full-year fact for."""
+    """The latest fiscal year end any flow metric has a full-year fact for in a 10-K. 10-Qs are left out: Amazon's carry
+    trailing-twelve-month figures, which look like a fiscal year ending a quarter later."""
     ends = [r['end'] for spec in METRICS.values() if not spec.get('balance') for c in spec['synonyms']
-            for r in _rows(gaap, c, spec['unit']) if 'start' in r and 350 <= _days(r) <= 380]
+            for r in _rows(gaap, c, spec['unit'])
+            if 'start' in r and 350 <= _days(r) <= 380 and r.get('form', '10-K').startswith('10-K')]
     return max(ends) if ends else None
 
 
@@ -165,7 +178,12 @@ def resolve(companyfacts: dict, ticker: str) -> Resolution:
     if end is None:
         res.no_data = True
         return res
+    res.latest_fy = int(end[:4])
     v = _fy_values(gaap, end)
+    # the income statement from the 10-K's calculation linkbase (attached by xbrl.attach_income_statement), a second opinion
+    tree = companyfacts.get('income_statement')
+    on_tree = statements.concepts_on(tree) if tree else set()
+    pos = statements.positions(tree) if tree else {}
 
     def candidates(metric: str) -> dict[str, float]:
         """synonym -> its latest-year value, for synonyms that have any data in any year."""
@@ -191,6 +209,14 @@ def resolve(companyfacts: dict, ticker: str) -> Resolution:
             res.absent.append(metric)
             continue
         found = candidates(metric)
+        if not found and metric in FILLABLE and pos.get(metric):
+            concept = pos[metric]
+            if any(True for _ in _rows(gaap, concept, spec['unit'])):
+                found = {concept: _value_at(gaap, concept, spec['unit'], end)}
+                res.checks.append((f'{metric}: no synonym matched; taken from the income statement ({concept})', True))
+            else:
+                res.notes.append(f'{metric}: the income statement uses {concept}, which is not in the SEC facts '
+                                 f'(its values would need the 10-K HTML)')
         if not found:
             res.absent.append(metric)
             continue
@@ -198,21 +224,59 @@ def resolve(companyfacts: dict, ticker: str) -> Resolution:
         current = {c: x for c, x in found.items() if x is not None}
         top = max(current.values(), default=None)
         disagree = top is not None and any(abs(x - top) > AMBIGUITY * abs(top) for x in current.values())
+        forced = None
         if disagree and not pinned:
-            if metric == 'revenue':
+            on = [c for c in current if c in on_tree]
+            if len(on) == 1:
+                forced = on[0]  # exactly one of the competing concepts is a line of the company's income statement
+                res.checks.append((f'{metric}: only {forced} is on the income statement', True))
+            elif metric == 'revenue':
                 confirmed = _revenue_identities(top, cost, v)
             elif metric == 'cost_of_revenue':
                 confirmed = _cost_identities(top, revenue, v)
             else:
                 confirmed = []
-            if not confirmed:
+            if not forced and not confirmed:
                 res.skipped[metric] = ('synonyms disagree and no identity confirms the largest: '
                                        + ', '.join(f'{c}={x / 1e6:,.0f}M' for c, x in current.items()))
                 continue
-            res.checks.append((f'{metric}: {confirmed[0]}', True))
+            if not forced:
+                res.checks.append((f'{metric}: {confirmed[0]}', True))
+
+        primary = forced or (max(current, key=current.get) if current else next(iter(found)))
+
+        if metric == 'cost_of_revenue' and tree:
+            # Cost of revenue means different things: Amazon's is its main cost, UnitedHealth's cost of goods sold is a
+            # small pharmacy line next to medical claims. Beside other cost lines (no gross profit on the statement) it must
+            # be the largest of them; under gross profit it needs no comparison.
+            group = statements.cost_group(tree, primary)
+            if group:
+                values = {c: _value_at(gaap, c, 'USD', end) for c in group}
+                mine = values.get(primary)
+                larger = {c: x for c, x in values.items() if c != primary and x is not None and mine is not None
+                          and x > mine}
+                if larger:
+                    res.skipped[metric] = (f'{primary} ({mine / 1e6:,.0f}M) is not the main cost on the income statement: '
+                                           + ', '.join(f'{c} is {x / 1e6:,.0f}M' for c, x in larger.items()))
+                    continue
+
+        if not spec.get('balance'):
+            last = max((r['end'] for c in found for r in _rows(gaap, c, spec['unit'])
+                        if 'start' in r and 350 <= _days(r) <= 380), default=end)
+            if last < end:
+                res.stale[metric] = int(last[:4])  # reported through an earlier year than the company's latest
+                if res.latest_fy - int(last[:4]) >= DISCONTINUED_AFTER:
+                    # Not stored: the agent would present Amazon's FY2009 gross profit or BAC's FY2021 provision as the
+                    # company's latest figure. One year behind is only flagged (a late filing is not a discontinued line).
+                    res.discontinued.append(metric)
+                    custom = pos.get(metric)
+                    if custom and custom != next(iter(found)) and not any(True for _ in _rows(gaap, custom, spec['unit'])):
+                        res.notes.append(f'{metric}: the income statement now uses {custom}, which is not in the SEC '
+                                         f'facts (its values would need the 10-K HTML)')
+                    continue
 
         res.chosen[metric] = list(found)
-        res.primary[metric] = (max(current, key=current.get) if current else next(iter(found)))
+        res.primary[metric] = primary
         if pinned:
             res.pinned.append((metric, res.primary[metric]))
 
@@ -222,6 +286,18 @@ def resolve(companyfacts: dict, ticker: str) -> Resolution:
     if v['pretax'] is not None and v['tax'] is not None and v['ni'] is not None:
         res.checks.append(('pre-tax income - tax ~ net income (1%)',
                            abs(v['pretax'] - v['tax'] - v['ni']) <= 0.01 * abs(v['ni'])))
+
+    for metric in ('revenue', 'pretax_income', 'cost_of_revenue', 'provision_for_credit_losses'):
+        if metric in pos and metric in res.primary:
+            unit = METRICS[metric]['unit']
+            if pos[metric] == res.primary[metric]:
+                res.checks.append((f'income statement confirms {metric} = {pos[metric]}', True))
+            elif _close(_value_at(gaap, pos[metric], unit, end), _value_at(gaap, res.primary[metric], unit, end)):
+                res.checks.append((f'income statement has {metric} = {pos[metric]}, the same figure as the resolver\'s '
+                                   f'{res.primary[metric]}', True))
+            else:
+                res.checks.append((f'{metric}: income statement has {pos[metric]}, resolver chose '
+                                   f'{res.primary[metric]}', False))
 
     res.missing_core = [m for m in CORE if m not in res.chosen]
     if 'revenue' in res.missing_core:
@@ -243,6 +319,11 @@ def describe(ticker: str, res: Resolution) -> list[str]:
         lines.append(f'  SKIPPED {metric}: {why}')
     for metric, concept in res.pinned:
         lines.append(f'  override: {metric} = {concept}')
+    for metric, year in res.stale.items():
+        lines.append(f'  STALE {metric}: last reported for FY{year}, the company\'s latest year is FY{res.latest_fy}'
+                     + (', not stored' if metric in res.discontinued else ''))
+    for note in res.notes:
+        lines.append(f'  note: {note}')
     for label, ok in res.checks:
         lines.append(f'  {"ok" if ok else "DIFFERS"}: {label}')
     for metric in res.missing_core:
