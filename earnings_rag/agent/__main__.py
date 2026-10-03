@@ -23,6 +23,8 @@ def main() -> None:
         print(f'[uncited figure: {sentence}]')
     if result.unknown_ids:
         print(f'[cited ids no tool returned: {", ".join(result.unknown_ids)}]')
+    if result.unacknowledged_missing:
+        print(f'[answer does not say these are missing: {", ".join(result.unacknowledged_missing)}]')
     if result.cut_off:
         print('\n[answer cut off at max_tokens]')
     print(f'\n[{result.steps} model calls, {len(result.trace)} tool calls, '

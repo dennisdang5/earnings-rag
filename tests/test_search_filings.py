@@ -2,7 +2,7 @@ import json
 
 from earnings_rag import pipeline
 from earnings_rag.agent import tools as tools_module
-from earnings_rag.agent.tools import SEARCH_FILINGS, describe_periods
+from earnings_rag.agent.tools import SEARCH_FILINGS, describe_periods, missing_label
 from earnings_rag.store import _where
 
 
@@ -87,7 +87,16 @@ def test_no_match_is_an_error_that_lists_the_filings_that_have_text(monkeypatch)
     out, _ = call(monkeypatch, [], periods, company='NVDA', period='Q2', fiscal_year=2030)
     assert 'results' not in out and 'the filing asked for is not available' in out['error']
     assert 'NVDA: 10-K FY2023-FY2026 (2); 10-Q Q1 FY2023-Q2 FY2027 (2)' in out['error']
+    assert out['missing_filing'] == {'label': 'NVDA Q2 FY2030 10-Q', 'fiscal_year': 2030}
     assert describe_periods([]) == ''
+
+
+def test_missing_filing_labels():
+    assert missing_label('NVDA', 2030, 'Q2', '10-Q') == 'NVDA Q2 FY2030 10-Q'
+    assert missing_label('AAPL', 2031, 'FY', '10-K') == 'AAPL FY2031 10-K'
+    assert missing_label(None, 2031, None, '10-K') == 'FY2031 10-K'
+    assert missing_label('COF', None, 'Q3', '10-Q') == 'COF Q3 10-Q'
+    assert missing_label('COF', None, None, None) == 'COF latest filing'
 
 
 def test_schema_exposes_the_new_arguments_and_keeps_query_required():

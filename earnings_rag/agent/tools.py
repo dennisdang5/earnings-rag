@@ -84,6 +84,19 @@ def describe_periods(rows: list[dict]) -> str:
     return ' | '.join(parts)
 
 
+def missing_label(company: str | None, fiscal_year: int | None, period: str | None, form: str | None) -> str:
+    """'NVDA Q2 FY2030 10-Q' for the filing a search asked for and did not find. The loop checks the answer admits it."""
+    if form is None:                                  # latest=true: whichever filing is newest
+        when = 'latest'
+    elif fiscal_year is None:
+        when = period or ''
+    elif period in ('Q1', 'Q2', 'Q3'):
+        when = f'{period} FY{fiscal_year}'
+    else:
+        when = f'FY{fiscal_year}'
+    return ' '.join(p for p in (company, when, form or 'filing') if p)
+
+
 def search_filings(args: SearchFilingsArgs) -> dict:
     if args.latest and (args.fiscal_year is not None or args.period is not None):
         return {'error': 'latest cannot be combined with fiscal_year or period: use one or the other.'}
@@ -113,7 +126,9 @@ def search_filings(args: SearchFilingsArgs) -> dict:
         # (3 of 3 runs). The filing asked for is not in the corpus, which is a fact to report, not a quiet miss.
         return {'error': 'No filing matches those filters, so the filing asked for is not available. Tell the user that '
                          'first; if you then answer from a different period, say which one. Filings with text: '
-                         + describe_periods(text_periods(args.company))}
+                         + describe_periods(text_periods(args.company)),
+                'missing_filing': {'label': missing_label(args.company, args.fiscal_year, period, form),
+                                   'fiscal_year': args.fiscal_year}}
     if notes:
         out['note'] = ' '.join(notes)
     return out
