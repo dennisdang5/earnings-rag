@@ -93,25 +93,43 @@ def chunk_ids() -> set[str]:
     with connect() as conn:
         return {r[0] for r in conn.execute('SELECT id FROM chunks').fetchall()}
 
-def _where(ticker: str | None, form: str | None, fiscal_year: int | None, fiscal_period: str | None) -> tuple[str, list]:
-    """The WHERE clause and parameters for a filtered search; a filter left as None does not restrict."""
+def _where(ticker: str | None, form: str | None, fiscal_year: int | None, fiscal_period: str | None,
+           latest: bool = False) -> tuple[str, list]:
+    """
+    The WHERE clause and parameters for a filtered search; a filter left as None does not restrict.
+    latest keeps only each company's most recent filing (among the given form, if any). Periods are ISO dates, so the
+    greatest string is the latest. Computed per company, so a search over all companies gets each one's own latest.
+    """
     clauses, params = [], []
     for column, value in (('ticker', ticker), ('form', form), ('fiscal_year', fiscal_year),
                           ('fiscal_period', fiscal_period)):
         if value is not None:
             clauses.append(f'{column} = %s')
             params.append(value)
+    if latest:
+        same_form = ' AND c2.form = %s' if form is not None else ''
+        clauses.append(f'period = (SELECT max(c2.period) FROM chunks c2 WHERE c2.ticker = chunks.ticker{same_form})')
+        if form is not None:
+            params.append(form)
     return (' WHERE ' + ' AND '.join(clauses)) if clauses else '', params
 
+def text_periods(ticker: str | None = None) -> list[dict]:
+    """The filings that have text, oldest first: one row per (ticker, form, period) with its fiscal label."""
+    sql = ('SELECT DISTINCT ticker, form, period, fiscal_year, fiscal_period FROM chunks'
+           + (' WHERE ticker = %s' if ticker else '') + ' ORDER BY ticker, period')
+    with connect() as conn:
+        rows = conn.execute(sql, (ticker,) if ticker else ()).fetchall()
+    return [dict(zip(('ticker', 'form', 'period', 'fiscal_year', 'fiscal_period'), r)) for r in rows]
+
 def search(query_vector: list[float], k: int = 5, ticker: str | None = None, form: str | None = None,
-           fiscal_year: int | None = None, fiscal_period: str | None = None) -> list[dict]:
+           fiscal_year: int | None = None, fiscal_period: str | None = None, latest: bool = False) -> list[dict]:
     """
     Exact nearest neighbours by cosine distance among the chunks matching the filters. A filter left as None does not
     restrict: form=None searches 10-Ks and 10-Qs together (pipeline.retrieve defaults to '10-K' so the fixed /ask
     pipeline is unchanged).
     """
     vector = str(query_vector)
-    where, params = _where(ticker, form, fiscal_year, fiscal_period)
+    where, params = _where(ticker, form, fiscal_year, fiscal_period, latest)
     sql = f"""
         SELECT id, ticker, period, text, embedding <=> %s::vector AS distance, form, fiscal_year, fiscal_period
         FROM chunks{where}

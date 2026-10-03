@@ -45,12 +45,16 @@ def check_citations(answer: str, seen_ids: set[str]) -> dict:
 
 
 def revision_request(problems: dict) -> str:
+    # Each problem gets its own fix. A single figure-only instruction made the model answer an unknown passage id by
+    # fetching unrelated financials and leaving the bad id in place (competition question, agent/10q-search-tool).
     parts = []
     if problems['uncited']:
         parts.append('These sentences state figures without a citation:\n'
-                     + '\n'.join(f'- {s}' for s in problems['uncited']))
+                     + '\n'.join(f'- {s}' for s in problems['uncited'])
+                     + '\nAdd the [id] that supports each figure (call a tool if you need the fact), or remove the figure.')
     if problems['unknown_ids']:
-        parts.append('These cited ids were never returned by a tool: ' + ', '.join(problems['unknown_ids']) + '.')
-    parts.append('Revise the answer: add the [id] that supports each figure (call a tool if you need the fact), '
-                 'or remove the figure. Cite only ids that tools returned.')
+        parts.append('These cited ids were never returned by a tool: ' + ', '.join(problems['unknown_ids']) + '.'
+                     '\nReplace each with the id of the tool result that states the claim (the ids are in the results '
+                     'above, no new tool call is needed), or remove the claim.')
+    parts.append('Revise the answer. Cite only ids that tools returned.')
     return '\n\n'.join(parts)
