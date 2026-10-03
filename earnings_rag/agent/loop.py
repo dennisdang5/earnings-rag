@@ -5,6 +5,7 @@ from datetime import date
 from earnings_rag.agent.citations import check_citations, check_missing_filings, revision_request
 from earnings_rag.agent.tools import Tool, DEFAULT_TOOLS
 from earnings_rag.config import settings
+from earnings_rag.periods import period_note, resolve_periods
 from earnings_rag.store import text_periods
 
 SYSTEM_PROMPT = """You are a financial research assistant with tools for searching SEC 10-K (annual) and 10-Q (quarterly) filings.
@@ -61,6 +62,7 @@ class AgentResult:
     uncited: list[str] = field(default_factory=list)       # sentences in the final answer with a figure and no [id]
     unknown_ids: list[str] = field(default_factory=list)   # cited ids in the final answer that no tool returned
     unacknowledged_missing: list[str] = field(default_factory=list)  # requested filings found missing, answer silent
+    resolved_periods: list[dict] = field(default_factory=list)       # relative periods resolved in code (periods.py)
 
     @property
     def input_tokens(self) -> int:
@@ -116,17 +118,24 @@ def missing_filing(result: str) -> dict | None:
 
 
 def run_agent(question: str, client, tools: list[Tool] | None = None,
-              max_steps: int | None = None, model: str | None = None, context: str | None = None) -> AgentResult:
+              max_steps: int | None = None, model: str | None = None, context: str | None = None,
+              filings: list[dict] | None = None, today: date | None = None) -> AgentResult:
     """
     The whole agent: call the model; if it asks for tools, run them, append the results, and call it again.
     Stops when the model answers without asking for a tool, or when the step budget is spent.
 
     `client` is anything with the OpenAI `chat.completions.create` interface, so tests can pass a scripted fake.
-    `context` is appended to the system prompt; None builds date_context from today and the database, '' adds nothing
-    (tests, which have no database).
+    `context` is appended to the system prompt; None builds date_context, '' adds nothing. Relative periods in the
+    question are resolved in code and noted beside it (periods.py). `filings` (text_periods() rows, default: the
+    database) and `today` are parameters so tests can fix them.
     """
+    filings = text_periods() if filings is None else filings
+    today = today or date.today()
     if context is None:
-        context = date_context(date.today(), text_periods())
+        context = date_context(today, filings)
+    resolved = resolve_periods(question, filings, today)
+    # the model sees the question with the note; the missing-filing check counts the resolved years as asked for
+    asked = question + ('\n\n' + period_note(resolved, today) if resolved else '')
     tools = tools if tools is not None else DEFAULT_TOOLS
     max_steps = max_steps if max_steps is not None else settings.agent_max_steps
     model = model or settings.llm_model
@@ -135,7 +144,7 @@ def run_agent(question: str, client, tools: list[Tool] | None = None,
     schemas = [t.schema() for t in tools]
     messages = [
         {'role': 'system', 'content': SYSTEM_PROMPT + ('\n\n' + context if context else '')},
-        {'role': 'user', 'content': question},
+        {'role': 'user', 'content': asked},
     ]
     trace = []
     usage = []
@@ -145,7 +154,7 @@ def run_agent(question: str, client, tools: list[Tool] | None = None,
 
     def check(answer: str) -> dict:
         return {**check_citations(answer, seen_ids),
-                'unacknowledged_missing': check_missing_filings(answer, question, missing)}
+                'unacknowledged_missing': check_missing_filings(answer, asked, missing)}
 
     def call_model(**extra):
         response = client.chat.completions.create(
@@ -171,7 +180,7 @@ def run_agent(question: str, client, tools: list[Tool] | None = None,
                 messages.append({'role': 'user', 'content': revision_request(problems)})
                 continue
             return AgentResult(answer=msg.content or '', trace=trace, usage=usage, steps=step,
-                               cut_off=choice.finish_reason == 'length', revised=revised, **problems)
+                               cut_off=choice.finish_reason == 'length', revised=revised, resolved_periods=resolved, **problems)
 
         messages.append(_assistant_message(msg))
         for tc in msg.tool_calls:
@@ -192,4 +201,4 @@ def run_agent(question: str, client, tools: list[Tool] | None = None,
     choice = call_model(tool_choice='none')
     answer = choice.message.content or ''
     return AgentResult(answer=answer, trace=trace, usage=usage, steps=max_steps, truncated=True,
-                       cut_off=choice.finish_reason == 'length', revised=revised, **check(answer))
+                       cut_off=choice.finish_reason == 'length', revised=revised, resolved_periods=resolved, **check(answer))

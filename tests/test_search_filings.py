@@ -65,6 +65,13 @@ def test_latest_cannot_be_combined_with_a_period_or_year(monkeypatch):
         assert 'latest cannot be combined' in out['error'] and seen == {}     # retrieve was never called
 
 
+def test_a_quarter_needs_a_year(monkeypatch):
+    # alone it searched that quarter across every year: NVIDIA "last quarter" mixed Q2 FY2026 into a Q2 FY2027 answer
+    for period in ('Q2', 'Q4', 'FY'):
+        out, seen = call(monkeypatch, [hit()], company='NVDA', period=period)
+        assert 'period needs fiscal_year' in out['error'] and seen == {}
+
+
 def test_unknown_period_is_rejected_by_the_schema(monkeypatch):
     out, _ = call(monkeypatch, period='Q5')
     assert 'Invalid arguments' in out['error']
@@ -73,7 +80,7 @@ def test_unknown_period_is_rejected_by_the_schema(monkeypatch):
 # --- what comes back --------------------------------------------------------------------------------------------------
 
 def test_results_name_the_filing_they_come_from(monkeypatch):
-    out, _ = call(monkeypatch, [hit()], period='Q2')
+    out, _ = call(monkeypatch, [hit()], period='Q2', fiscal_year=2027)
     r = out['results'][0]
     assert (r['form'], r['fiscal_year'], r['fiscal_period'], r['period']) == ('10-Q', 2027, 'Q2', '2026-07-26')
     assert r['distance'] == 0.4139
