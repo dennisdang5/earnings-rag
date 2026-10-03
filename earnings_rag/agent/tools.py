@@ -59,8 +59,8 @@ class SearchFilingsArgs(BaseModel):
         default=None, description='Fiscal year (the calendar year it ends in). Omit for all years.')
     period: Literal['FY', 'Q1', 'Q2', 'Q3', 'Q4'] | None = Field(
         default=None, description=('Q1, Q2 or Q3 searches that quarter\'s 10-Q (quarterly report). FY, or Q4, searches the '
-                                   'annual report (10-K), which also covers the fourth quarter. Omit to search annual '
-                                   'reports only.'))
+                                   'annual report (10-K), which also covers the fourth quarter. Needs fiscal_year. Omit to '
+                                   'search annual reports only.'))
     latest: bool = Field(
         default=False, description=('true searches only each company\'s most recent filing, quarterly or annual. Use it for '
                                     '"latest", "most recent" or "current" questions. Not combinable with fiscal_year or '
@@ -100,6 +100,11 @@ def missing_label(company: str | None, fiscal_year: int | None, period: str | No
 def search_filings(args: SearchFilingsArgs) -> dict:
     if args.latest and (args.fiscal_year is not None or args.period is not None):
         return {'error': 'latest cannot be combined with fiscal_year or period: use one or the other.'}
+    if args.period is not None and args.fiscal_year is None:
+        # A quarter alone searched it across every year: "last quarter" at NVIDIA cited Q2 FY2027 from passages of which
+        # 2 of 5 were Q2 FY2026.
+        return {'error': 'period needs fiscal_year: a quarter alone would mix the filings of every year for that quarter. Set '
+                         'fiscal_year, or use latest=true for the newest filing.'}
 
     notes = []
     period = args.period
