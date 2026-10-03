@@ -52,20 +52,35 @@ UNAVAILABLE = re.compile(
     r"(?:could|can)\s?(?:no|n')t (?:find|locate)|no (?:data|information|text|passages) (?:for|from|on)", re.IGNORECASE)
 
 
+# Years as people write them: 2030 and FY2030, or two digits after FY, "fiscal (year)" or an apostrophe (FY30, FY'30,
+# fiscal '30, Q2 '30). Two digits mean 20xx. Spelled-out years ("twenty thirty") and relative ones ("next year") are not
+# read: the first is rare, the second needs today's date (see DECISIONS.md, missing-filing years).
+FULL_YEAR = re.compile(r'(?<!\d)(20\d{2})(?!\d)')
+SHORT_YEAR = re.compile(r"(?:\bFY\s?'?|\bfiscal(?:\s+year)?\s+'?|(?<![\w'])')(\d{2})\b", re.IGNORECASE)
+
+
+def years_in(text: str) -> set[int]:
+    """Every fiscal year the text mentions, written in full or as two digits."""
+    return {int(y) for y in FULL_YEAR.findall(text)} | {2000 + int(y) for y in SHORT_YEAR.findall(text)}
+
+
 def check_missing_filings(answer: str, question: str, missing: list[dict]) -> list[str]:
     """
     Labels of filings that search_filings reported missing, that the user asked for, and that the answer does not say
-    are missing. "Asked for" means the filing's fiscal year is written in the question: a period the model invented and
-    then corrected on its own was never the user's request. "Says" means a sentence with an unavailability phrase that
-    names the year, or follows a sentence that does.
+    are missing. "Asked for" means the filing's fiscal year is in the question (years_in): a period the model invented
+    and then corrected on its own was never the user's request. "Says" means a sentence with an unavailability phrase
+    that names the year, or follows a sentence that does. Both sides read years the same way, so a question about
+    "FY30" is checked and an answer saying "fiscal '30 is not available" passes.
     """
     sentences = _sentences(answer)
+    years = [years_in(s) for s in sentences]
+    asked = years_in(question)
     out = []
     for m in missing:
-        year = str(m.get('fiscal_year') or '')
-        if not year or year not in question or m['label'] in out:
+        year = m.get('fiscal_year')
+        if not year or year not in asked or m['label'] in out:
             continue
-        said = any(UNAVAILABLE.search(s) and (year in s or (i and year in sentences[i - 1]))
+        said = any(UNAVAILABLE.search(s) and (year in years[i] or (i and year in years[i - 1]))
                    for i, s in enumerate(sentences))
         if not said:
             out.append(m['label'])
