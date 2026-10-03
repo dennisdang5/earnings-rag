@@ -87,6 +87,9 @@ def test_results_work_with_the_novelty_note():
 def test_agent_can_chain_get_financials_into_calculate(monkeypatch):
     rows = {2024: row(fiscal_year=2024, value=60_922_000_000.0), 2025: row()}
     monkeypatch.setattr(tools_module, 'get_facts', lambda t, m, fy, fp, limit: [rows[fy]])
+    # get_financials also asks the facts table what the company reports; CI has no table when pytest runs
+    monkeypatch.setattr(tools_module, 'available_metrics', lambda t: ['revenue'])
+    monkeypatch.setattr(tools_module, 'available_breakdowns', lambda t, corporate: [])
     client = FakeClient(
         tool_request('get_financials', '{"company": "NVDA", "metric": "revenue", "fiscal_year": 2024, "period": "FY"}', 'c1'),
         tool_request('get_financials', '{"company": "NVDA", "metric": "revenue", "fiscal_year": 2025, "period": "FY"}', 'c2'),

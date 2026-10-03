@@ -1,7 +1,7 @@
 import json
 from dataclasses import dataclass, field
 
-from earnings_rag.agent.citations import check_citations, revision_request
+from earnings_rag.agent.citations import check_citations, check_missing_filings, revision_request
 from earnings_rag.agent.tools import Tool, DEFAULT_TOOLS
 from earnings_rag.config import settings
 
@@ -32,9 +32,10 @@ class AgentResult:
     steps: int = 0                                   # model calls used, not counting the forced final one
     truncated: bool = False                          # True if the step budget ran out and the answer was forced
     cut_off: bool = False                            # True if the final answer hit max_tokens mid-answer
-    revised: bool = False                            # True if the citation check sent the answer back once
+    revised: bool = False                            # True if the answer checks sent the answer back once
     uncited: list[str] = field(default_factory=list)       # sentences in the final answer with a figure and no [id]
     unknown_ids: list[str] = field(default_factory=list)   # cited ids in the final answer that no tool returned
+    unacknowledged_missing: list[str] = field(default_factory=list)  # requested filings found missing, answer silent
 
     @property
     def input_tokens(self) -> int:
@@ -81,6 +82,14 @@ def annotate_novelty(result: str, seen_ids: set[str]) -> tuple[str, int | None]:
     return result, len(new)
 
 
+def missing_filing(result: str) -> dict | None:
+    """The filing a search_filings error reports missing ({"label", "fiscal_year"}), or None for any other result."""
+    try:
+        return json.loads(result).get('missing_filing')
+    except (ValueError, AttributeError):
+        return None
+
+
 def run_agent(question: str, client, tools: list[Tool] | None = None,
               max_steps: int | None = None, model: str | None = None) -> AgentResult:
     """
@@ -102,7 +111,12 @@ def run_agent(question: str, client, tools: list[Tool] | None = None,
     trace = []
     usage = []
     seen_ids: set[str] = set()
+    missing: list[dict] = []
     revised = False
+
+    def check(answer: str) -> dict:
+        return {**check_citations(answer, seen_ids),
+                'unacknowledged_missing': check_missing_filings(answer, question, missing)}
 
     def call_model(**extra):
         response = client.chat.completions.create(
@@ -119,9 +133,10 @@ def run_agent(question: str, client, tools: list[Tool] | None = None,
         msg = choice.message
 
         if not msg.tool_calls:
-            problems = check_citations(msg.content or '', seen_ids)
-            if (problems['uncited'] or problems['unknown_ids']) and not revised:
-                # one revision turn, tools still allowed so it can fetch a missing fact; a second failure is accepted
+            problems = check(msg.content or '')
+            if any(problems.values()) and not revised:
+                # one revision turn for every problem, tools still allowed so it can fetch a missing fact; a second
+                # failure is accepted
                 revised = True
                 messages.append({'role': 'assistant', 'content': msg.content})
                 messages.append({'role': 'user', 'content': revision_request(problems)})
@@ -137,6 +152,8 @@ def run_agent(question: str, client, tools: list[Tool] | None = None,
             else:
                 result = tool.call(tc.function.arguments)
             result, new_results = annotate_novelty(result, seen_ids)
+            if (m := missing_filing(result)) is not None:
+                missing.append(m)
 
             trace.append({'step': step, 'tool': tc.function.name, 'arguments': tc.function.arguments,
                           'result': result, 'new_results': new_results})
@@ -146,4 +163,4 @@ def run_agent(question: str, client, tools: list[Tool] | None = None,
     choice = call_model(tool_choice='none')
     answer = choice.message.content or ''
     return AgentResult(answer=answer, trace=trace, usage=usage, steps=max_steps, truncated=True,
-                       cut_off=choice.finish_reason == 'length', revised=revised, **check_citations(answer, seen_ids))
+                       cut_off=choice.finish_reason == 'length', revised=revised, **check(answer))

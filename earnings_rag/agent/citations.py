@@ -44,6 +44,34 @@ def check_citations(answer: str, seen_ids: set[str]) -> dict:
     return {'uncited': uncited, 'unknown_ids': unknown}
 
 
+# Ways of saying a filing is missing. Generous on purpose: a false "acknowledged" leaves the answer as it was before
+# this check existed, a false "not acknowledged" costs a pointless revision.
+UNAVAILABLE = re.compile(
+    r"not available|unavailable|(?:does|do|did)\s?n[o']t exist|no (?:such )?(?:10-[QK]|filing|report|quarterly report|"
+    r"annual report)|not (?:yet )?(?:been )?(?:filed|released|published|included)|not (?:in|part of) the|"
+    r"(?:could|can)\s?(?:no|n')t (?:find|locate)|no (?:data|information|text|passages) (?:for|from|on)", re.IGNORECASE)
+
+
+def check_missing_filings(answer: str, question: str, missing: list[dict]) -> list[str]:
+    """
+    Labels of filings that search_filings reported missing, that the user asked for, and that the answer does not say
+    are missing. "Asked for" means the filing's fiscal year is written in the question: a period the model invented and
+    then corrected on its own was never the user's request. "Says" means a sentence with an unavailability phrase that
+    names the year, or follows a sentence that does.
+    """
+    sentences = _sentences(answer)
+    out = []
+    for m in missing:
+        year = str(m.get('fiscal_year') or '')
+        if not year or year not in question or m['label'] in out:
+            continue
+        said = any(UNAVAILABLE.search(s) and (year in s or (i and year in sentences[i - 1]))
+                   for i, s in enumerate(sentences))
+        if not said:
+            out.append(m['label'])
+    return out
+
+
 def revision_request(problems: dict) -> str:
     # Each problem gets its own fix. A single figure-only instruction made the model answer an unknown passage id by
     # fetching unrelated financials and leaving the bad id in place (competition question, agent/10q-search-tool).
@@ -56,5 +84,10 @@ def revision_request(problems: dict) -> str:
         parts.append('These cited ids were never returned by a tool: ' + ', '.join(problems['unknown_ids']) + '.'
                      '\nReplace each with the id of the tool result that states the claim (the ids are in the results '
                      'above, no new tool call is needed), or remove the claim.')
+    if problems.get('unacknowledged_missing'):
+        parts.append('You searched for ' + ', '.join(problems['unacknowledged_missing']) + ' and the tool reported '
+                     'each as not available, but the answer does not say so.\nBegin the answer by saying the filing '
+                     'asked for is not available. If you answer from another filing, name it; keep the rest of the '
+                     'answer.')
     parts.append('Revise the answer. Cite only ids that tools returned.')
     return '\n\n'.join(parts)
