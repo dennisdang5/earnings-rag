@@ -1,7 +1,7 @@
 from pydantic import BaseModel
 
 from fakes import FakeClient, answer, tool_request
-from earnings_rag.agent.citations import check_missing_filings, revision_request
+from earnings_rag.agent.citations import check_missing_filings, revision_request, years_in
 from earnings_rag.agent.loop import missing_filing, run_agent
 from earnings_rag.agent.tools import Tool
 
@@ -47,6 +47,24 @@ def test_a_period_the_user_did_not_ask_for_is_not_checked():
 def test_a_missing_filing_without_a_year_is_not_checked_and_repeats_count_once():
     assert check_missing_filings(SILENT, Q, [{'label': 'COF latest filing', 'fiscal_year': None}]) == []
     assert check_missing_filings(SILENT, Q, MISSING * 2) == ['NVDA Q2 FY2030 10-Q']
+
+
+def test_years_are_read_in_full_or_as_two_digits():
+    assert years_in('Q2 FY30') == years_in("fiscal '30") == years_in("Q2 '30") == years_in('FY 30') == {2030}
+    assert years_in("FY'30 and fiscal year 31") == {2030, 2031}
+    assert years_in('fiscal 2030, FY2031 and [NVDA_2026-07-26_0043]') == {2030, 2031, 2026}
+    assert years_in('Q2, RTX 40, $30 billion, H100, 300 stores, Apple\'s 30% margin') == set()
+
+
+def test_a_question_with_an_abbreviated_year_is_checked():
+    # live: the model searched FY2030 for "FY30", but the check looked for the digits 2030 in the question and skipped it
+    assert check_missing_filings(SILENT, 'What did NVIDIA say in its 10-Q for Q2 FY30?', MISSING) == ['NVDA Q2 FY2030 10-Q']
+
+
+def test_an_answer_with_an_abbreviated_year_passes():
+    # live, 4 of 4 runs: correct, and would have been sent back if only the question side read short years
+    text = "NVIDIA's 10-Q for the second quarter of fiscal '30 is not available. The existing filings include ..."
+    assert check_missing_filings(text, "the second quarter of fiscal '30?", MISSING) == []
 
 
 def test_the_revision_request_names_the_filing_and_what_to_do():
