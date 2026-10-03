@@ -1,9 +1,11 @@
 import json
 from dataclasses import dataclass, field
+from datetime import date
 
 from earnings_rag.agent.citations import check_citations, check_missing_filings, revision_request
 from earnings_rag.agent.tools import Tool, DEFAULT_TOOLS
 from earnings_rag.config import settings
+from earnings_rag.store import text_periods
 
 SYSTEM_PROMPT = """You are a financial research assistant with tools for searching SEC 10-K (annual) and 10-Q (quarterly) filings.
 
@@ -22,6 +24,29 @@ Rules:
 - Use only passages that directly address the question. Ignore retrieved passages on other topics, even from the right company. Do not pad the answer to a fixed number of points.
 - If any passage discusses the subject of the question, answer from it, even if the information is partial, hedged, or framed as a risk.
 - Only say "The provided filings do not address this." if no passage discusses the subject of the question."""
+
+
+
+def date_context(today: date, filings: list[dict]) -> str:
+    """
+    Today's date and each company's newest 10-K and 10-Q, appended to the system prompt. Without them the model
+    resolved "next fiscal year" from its training data (NVIDIA FY2024) and answered from that old filing (8 of 8 runs).
+    The period end dates show each fiscal calendar (NVIDIA's year ends in January). `filings` is text_periods() rows.
+    """
+    newest: dict[str, dict[str, dict]] = {}
+    for r in filings:                                  # oldest first, so the last row per form is the newest
+        newest.setdefault(r['ticker'], {})[r['form']] = r
+    parts = []
+    for ticker, forms in newest.items():
+        latest = []
+        for form, r in sorted(forms.items()):
+            quarter = '' if r['fiscal_period'] == 'FY' else f"{r['fiscal_period']} "
+            latest.append(f"{form} {quarter}FY{r['fiscal_year']} (ended {r['period']})")
+        parts.append(f"{ticker} {', '.join(latest)}")
+    return (f"Today is {today.isoformat()}. Newest filings with text: {'; '.join(parts)}. A fiscal year is named for "
+            "the calendar year it ends in. Work out relative dates (\"next fiscal year\", \"last quarter\", \"a year "
+            "ago\") from today's date and that company's fiscal calendar before searching. A period after a company's "
+            "newest filing has not been filed yet.")
 
 
 @dataclass
@@ -91,13 +116,17 @@ def missing_filing(result: str) -> dict | None:
 
 
 def run_agent(question: str, client, tools: list[Tool] | None = None,
-              max_steps: int | None = None, model: str | None = None) -> AgentResult:
+              max_steps: int | None = None, model: str | None = None, context: str | None = None) -> AgentResult:
     """
     The whole agent: call the model; if it asks for tools, run them, append the results, and call it again.
     Stops when the model answers without asking for a tool, or when the step budget is spent.
 
     `client` is anything with the OpenAI `chat.completions.create` interface, so tests can pass a scripted fake.
+    `context` is appended to the system prompt; None builds date_context from today and the database, '' adds nothing
+    (tests, which have no database).
     """
+    if context is None:
+        context = date_context(date.today(), text_periods())
     tools = tools if tools is not None else DEFAULT_TOOLS
     max_steps = max_steps if max_steps is not None else settings.agent_max_steps
     model = model or settings.llm_model
@@ -105,7 +134,7 @@ def run_agent(question: str, client, tools: list[Tool] | None = None,
     by_name = {t.name: t for t in tools}
     schemas = [t.schema() for t in tools]
     messages = [
-        {'role': 'system', 'content': SYSTEM_PROMPT},
+        {'role': 'system', 'content': SYSTEM_PROMPT + ('\n\n' + context if context else '')},
         {'role': 'user', 'content': question},
     ]
     trace = []

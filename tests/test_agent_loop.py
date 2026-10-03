@@ -4,7 +4,10 @@ from types import SimpleNamespace
 from pydantic import BaseModel
 
 from earnings_rag.agent import tools as tools_module
-from earnings_rag.agent.loop import run_agent, annotate_novelty
+from datetime import date
+
+from earnings_rag.agent import loop
+from earnings_rag.agent.loop import SYSTEM_PROMPT, annotate_novelty, date_context, run_agent
 from earnings_rag.agent.tools import Tool, SEARCH_FILINGS
 
 
@@ -176,3 +179,34 @@ def test_calculate_errors_reach_the_model_as_tool_results():
     client = FakeClient(tool_request('calculate', '{"expression": "1,000 + 5"}'), answer('ok'))
     result = run_agent('q', client, tools=[CALCULATE])
     assert 'thousands separators' in json.loads(result.trace[0]['result'])['error']
+
+
+# --- date context -------------------------------------------------------------------------------------------------
+
+def filing(ticker, form, period, fy, fp):
+    return {'ticker': ticker, 'form': form, 'period': period, 'fiscal_year': fy, 'fiscal_period': fp}
+
+
+def test_date_context_names_today_and_each_companys_newest_10k_and_10q():
+    rows = [filing('NVDA', '10-K', '2025-01-26', 2025, 'FY'), filing('NVDA', '10-K', '2026-01-25', 2026, 'FY'),
+            filing('NVDA', '10-Q', '2026-04-26', 2027, 'Q1'), filing('NVDA', '10-Q', '2026-07-26', 2027, 'Q2'),
+            filing('AAPL', '10-K', '2025-09-27', 2025, 'FY')]              # oldest first, as text_periods returns
+    text = date_context(date(2026, 10, 2), rows)
+    assert text.startswith('Today is 2026-10-02. Newest filings with text: NVDA 10-K FY2026 (ended 2026-01-25), '
+                           '10-Q Q2 FY2027 (ended 2026-07-26); AAPL 10-K FY2025 (ended 2025-09-27).')
+    assert 'FY2025 (ended 2025-01-26)' not in text and 'relative dates' in text
+
+
+def test_the_context_is_appended_to_the_system_prompt_and_empty_adds_nothing():
+    client = FakeClient(answer('x'), answer('x'))
+    run_agent('q', client, tools=[], context='Today is 2026-10-02.')
+    run_agent('q', client, tools=[], context='')
+    with_context, without = (r['messages'][0]['content'] for r in client.requests)
+    assert with_context == SYSTEM_PROMPT + '\n\nToday is 2026-10-02.' and without == SYSTEM_PROMPT
+
+
+def test_by_default_the_context_comes_from_the_database(monkeypatch):
+    monkeypatch.setattr(loop, 'text_periods', lambda: [filing('COF', '10-Q', '2026-06-30', 2026, 'Q2')])
+    client = FakeClient(answer('x'))
+    run_agent('q', client, tools=[])
+    assert 'COF 10-Q Q2 FY2026 (ended 2026-06-30)' in client.requests[0]['messages'][0]['content']
