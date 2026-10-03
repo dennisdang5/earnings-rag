@@ -8,7 +8,8 @@ from pydantic import BaseModel, Field, ValidationError
 from earnings_rag.calc import evaluate
 from earnings_rag.pipeline import retrieve
 from earnings_rag.segments import CORPORATE, find_parts
-from earnings_rag.store import get_facts, fact_years, get_breakdown, available_breakdowns, breakdown_names, available_metrics
+from earnings_rag.store import (get_facts, fact_years, get_breakdown, available_breakdowns, breakdown_names, available_metrics,
+                                text_periods)
 from earnings_rag.xbrl import METRICS
 
 
@@ -54,26 +55,77 @@ class SearchFilingsArgs(BaseModel):
         default=None,
         description='Ticker to restrict the search to. Omit to search all companies.',
     )
+    fiscal_year: int | None = Field(
+        default=None, description='Fiscal year (the calendar year it ends in). Omit for all years.')
+    period: Literal['FY', 'Q1', 'Q2', 'Q3', 'Q4'] | None = Field(
+        default=None, description=('Q1, Q2 or Q3 searches that quarter\'s 10-Q (quarterly report). FY, or Q4, searches the '
+                                   'annual report (10-K), which also covers the fourth quarter. Omit to search annual '
+                                   'reports only.'))
+    latest: bool = Field(
+        default=False, description=('true searches only each company\'s most recent filing, quarterly or annual. Use it for '
+                                    '"latest", "most recent" or "current" questions. Not combinable with fiscal_year or '
+                                    'period.'))
+
+
+def describe_periods(rows: list[dict]) -> str:
+    """'NVDA: 10-K FY2023-FY2026 (4); 10-Q Q1 FY2023-Q2 FY2027 (14)' from text_periods() rows."""
+    by_company: dict[str, dict[str, list[dict]]] = {}
+    for r in rows:
+        by_company.setdefault(r['ticker'], {}).setdefault(r['form'], []).append(r)
+    parts = []
+    for ticker, forms in by_company.items():
+        spans = []
+        for form, filings in forms.items():
+            first, last = filings[0], filings[-1]
+            label = (lambda r: f"FY{r['fiscal_year']}" if r['fiscal_period'] == 'FY'
+                     else f"{r['fiscal_period']} FY{r['fiscal_year']}")
+            spans.append(f'{form} {label(first)}-{label(last)} ({len(filings)})')
+        parts.append(f'{ticker}: ' + '; '.join(spans))
+    return ' | '.join(parts)
 
 
 def search_filings(args: SearchFilingsArgs) -> dict:
+    if args.latest and (args.fiscal_year is not None or args.period is not None):
+        return {'error': 'latest cannot be combined with fiscal_year or period: use one or the other.'}
+
+    notes = []
+    period = args.period
+    if period == 'Q4':
+        period = 'FY'
+        notes.append('Q4 has no quarterly report of its own: its text is in the annual report (10-K), which was searched.')
+    # a quarter means 10-Qs; otherwise annual reports, the default; "latest" looks at whichever form is newest
+    form = '10-Q' if period in ('Q1', 'Q2', 'Q3') else (None if args.latest else '10-K')
+    if args.period is None and not args.latest:
+        notes.append('Searched annual reports (10-K) only. For a quarter, or the latest or most recent report, set period '
+                     '(Q1-Q3) or latest=true.')
+
     # route=False: the model decides the company explicitly, so keyword routing must not second-guess it
-    hits = retrieve(args.query, ticker=args.company, route=False)
-    return {
-        'results': [
-            {'id': h['id'], 'ticker': h['ticker'], 'period': h['period'],
-             'distance': round(h['distance'], 4), 'text': h['text']}
-            for h in hits
-        ]
-    }
+    hits = retrieve(args.query, ticker=args.company, route=False, form=form, fiscal_year=args.fiscal_year,
+                    fiscal_period=period, latest=args.latest)
+    out = {'results': [
+        {'id': h['id'], 'ticker': h['ticker'], 'form': h.get('form'), 'period': h['period'],
+         'fiscal_year': h.get('fiscal_year'), 'fiscal_period': h.get('fiscal_period'),
+         'distance': round(h['distance'], 4), 'text': h['text']}
+        for h in hits
+    ]}
+    if not hits:
+        # An error, not an empty result: with a note the model answered from the latest filing when asked for Q2 FY2030
+        # (3 of 3 runs). The filing asked for is not in the corpus, which is a fact to report, not a quiet miss.
+        return {'error': 'No filing matches those filters, so the filing asked for is not available. Tell the user that '
+                         'first; if you then answer from a different period, say which one. Filings with text: '
+                         + describe_periods(text_periods(args.company))}
+    if notes:
+        out['note'] = ' '.join(notes)
+    return out
 
 
 SEARCH_FILINGS = Tool(
     name='search_filings',
     description=(
-        'Semantic search over the text of NVIDIA, Apple, and Capital One annual reports (10-K). '
-        'Returns the 5 closest passages, each with an id you can cite. Tables are not included: '
-        'for financial figures, use get_financials.'
+        'Semantic search over the text of NVIDIA, Apple, and Capital One annual reports (10-K) and quarterly reports '
+        '(10-Q). Annual reports are searched unless you set period (Q1-Q3, the quarterly reports) or latest=true '
+        '(the most recent filing). Returns the 5 closest passages, each with an id you can cite and the filing it comes '
+        'from (form, fiscal year and period). Tables are not included: for financial figures, use get_financials.'
     ),
     args_model=SearchFilingsArgs,
     fn=search_filings,

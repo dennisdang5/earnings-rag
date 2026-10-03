@@ -1,5 +1,5 @@
 from fakes import FakeClient, answer, tool_request
-from earnings_rag.agent.citations import check_citations
+from earnings_rag.agent.citations import check_citations, revision_request
 from earnings_rag.agent.loop import run_agent
 from earnings_rag.agent.tools import Tool
 from pydantic import BaseModel
@@ -59,6 +59,13 @@ def test_an_id_no_tool_returned_is_flagged():
 
 def test_the_refusal_sentence_is_fine():
     assert check('The provided filings do not address this.') == {'uncited': [], 'unknown_ids': []}
+
+
+def test_each_problem_gets_its_own_fix_in_the_revision_request():
+    only_unknown = revision_request({'uncited': [], 'unknown_ids': ['COF_2023-12-31_0066']})
+    assert 'Replace each with the id' in only_unknown and 'figure' not in only_unknown
+    both = revision_request({'uncited': ['Revenue was $1 billion.'], 'unknown_ids': ['X_1']})
+    assert 'Add the [id] that supports each figure' in both and 'Replace each with the id' in both
 
 
 # --- in the loop -------------------------------------------------------------

@@ -49,14 +49,16 @@ def build_index(limit: int | None = None, new_only: bool = False) -> None:
     print(f'indexed {len(records)} chunks')
 
 def retrieve(question: str, k: int = 5, ticker: str | None = None, query_vector: list[float] | None = None, route: bool = True,
-             form: str | None = '10-K', fiscal_year: int | None = None, fiscal_period: str | None = None) -> list[dict]:
+             form: str | None = '10-K', fiscal_year: int | None = None, fiscal_period: str | None = None,
+             latest: bool = False) -> list[dict]:
     """
     Find the k nearest chunks such that an explicit ticker wins. Otherwise, a single named company in the question limits the search
     to that company.
 
     route: if the question names exactly one company, search only that company's chunks. An explicit ticker always wins.
     form: '10-K' by default, which keeps the fixed /ask pipeline and the eval on annual reports as before the 10-Qs were
-    ingested; None searches every form. fiscal_year / fiscal_period ('FY', 'Q1'-'Q3') narrow further.
+    ingested; None searches every form. fiscal_year / fiscal_period ('FY', 'Q1'-'Q3') narrow further; latest keeps only
+    each company's most recent filing.
     if ticker is None and route:
         ticker = detect_ticker(question)
     """
@@ -66,7 +68,8 @@ def retrieve(question: str, k: int = 5, ticker: str | None = None, query_vector:
     if query_vector is None:
         query_vector = embed_texts([question])[0]
 
-    return search(query_vector, k=k, ticker=ticker, form=form, fiscal_year=fiscal_year, fiscal_period=fiscal_period)
+    return search(query_vector, k=k, ticker=ticker, form=form, fiscal_year=fiscal_year, fiscal_period=fiscal_period,
+                  latest=latest)
 
 def print_hits(hits: list[dict]) -> None:
     for hit in hits:
