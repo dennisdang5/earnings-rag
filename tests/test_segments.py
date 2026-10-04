@@ -270,3 +270,54 @@ def test_quarters_are_labelled_by_the_fiscal_calendar_and_the_later_10q_wins():
     rows = normalize_segments(parsed, facts, 'NVDA', '10-Q')
     got = {(r['fiscal_year'], r['fiscal_period']): (r['value'] / M, r['form'], r['accession']) for r in rows}
     assert got == {(2026, 'Q2'): (105, '10-Q', 'acc-2026-08-26'), (2027, 'Q2'): (130, '10-Q', 'acc-2026-08-26')}
+
+
+# --- reported corporate items ------------------------------------------------------------------------------------
+
+def item(concept, value_m, start=FY[0], end=FY[1]):
+    return {'concept': concept, 'value': value_m * M, 'period_start': start, 'period_end': end}
+
+
+# NVIDIA FY2026: six items tagged on the corporate member, three of them operating
+NVDA_ITEMS = [item('AllocatedShareBasedCompensationExpense', 6_386), item('UnallocatedCorporateOperatingExpenditures', 1_997),
+              item('AcquisitionRelatedAndOtherCosts', 527), item('InvestmentIncomeInterest', 2_300),
+              item('InterestExpenseNonoperating', 259), item('OtherNonoperatingIncomeExpense', 9_022)]
+
+
+def test_the_one_subset_of_corporate_items_that_closes_the_gap_is_found():
+    match = segments.match_items(8_910 * M, NVDA_ITEMS)
+    assert [i['concept'] for i in match] == ['AllocatedShareBasedCompensationExpense',
+                                             'UnallocatedCorporateOperatingExpenditures', 'AcquisitionRelatedAndOtherCosts']
+    assert segments.match_items(1_000 * M, NVDA_ITEMS) is None                                  # nothing adds up
+    assert segments.match_items(300 * M, [item('A', 100), item('B', 200), item('C', 300)]) is None  # two subsets: ambiguous
+
+
+def test_a_gap_the_reported_items_close_is_stored_as_reported():
+    rows = [{**row('operating_income', 'segment', 'Compute and Networking', 130_141), 'filing': FY[1]},
+            {**row('operating_income', 'segment', 'Graphics', 9_156), 'filing': FY[1]}]
+    [r] = add_corporate_remainder(rows, TOTAL, {(FY[1], FY[0], FY[1]): NVDA_ITEMS})
+    assert (r['segment'], r['value'], r['derived']) == (CORPORATE, -8_910 * M, False)
+    assert r['concept'].split('+')[0] == 'AllocatedShareBasedCompensationExpense'
+    assert r['accession'] == 'seg'                    # cites the filing that tagged the items, not the total's
+
+
+def test_items_that_do_not_close_the_gap_fall_back_to_a_derived_remainder_with_a_warning():
+    # Apple FY2022: only corporate G&A is tagged; R&D, the rest of the gap, is not on the corporate member
+    rows = [{**row('operating_income', 'segment', 'Americas', 100_000), 'filing': FY[1]},
+            {**row('operating_income', 'segment', 'Europe', 39_000), 'filing': FY[1]}]
+    warnings = []
+    [r] = add_corporate_remainder(rows, TOTAL, {(FY[1], FY[0], FY[1]): [item('OtherGeneralAndAdministrativeExpense', 7_207)]},
+                                  warnings)
+    assert r['derived'] and r['value'] == -8_613 * M
+    assert len(warnings) == 1 and 'OtherGeneralAndAdministrativeExpense 7,207M' in warnings[0]
+
+
+def test_parse_filing_returns_only_items_tagged_on_the_corporate_member_alone():
+    html = ixbrl({'c': (*FY, [(ITEMS, 'us-gaap:CorporateNonSegmentMember')]),
+                  's': (*FY, [(ITEMS, 'us-gaap:CorporateNonSegmentMember'), (SEGMENT, 'nvda:GraphicsMember')]),
+                  'q': ('2024-10-28', '2025-01-26', [(ITEMS, 'us-gaap:CorporateNonSegmentMember')])},
+                 [('AllocatedShareBasedCompensationExpense', 'c', '6,386', 'scale="6" unitRef="usd"'),
+                  ('AcquisitionRelatedAndOtherCosts', 's', '527', 'scale="6" unitRef="usd"'),
+                  ('UnallocatedCorporateOperatingExpenditures', 'q', '612', 'scale="6" unitRef="usd"')])
+    _, items = segments.parse_filing(html, NVDA)
+    assert [(i['concept'], i['value']) for i in items] == [('AllocatedShareBasedCompensationExpense', 6_386 * M)]
