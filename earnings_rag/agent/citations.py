@@ -29,19 +29,66 @@ def _sentences(answer: str) -> list[str]:
     return out
 
 
-def check_citations(answer: str, seen_ids: set[str]) -> dict:
+# A figure with its parts: the number, its decimals (the precision it was written at), and a % or magnitude word
+FIGURE_PARTS = re.compile(rf'(\$\s?)?(\d[\d,]*)(?:\.(\d+))?\s?(%|(?:million|billion|trillion)\b)?', re.IGNORECASE)
+SCALE = {'million': 1, 'billion': 1e3, 'trillion': 1e6}  # dollar facts are shown to the model in USD millions
+
+
+def _figures(sentence: str) -> list[tuple[str, float, float, bool]]:
+    """(text, value, tolerance, is_percent) for each figure. Dollar amounts are in millions when a magnitude word is
+    given and as written otherwise (per-share values, or millions copied as shown). The tolerance is half a unit of the
+    last digit written, so "$130.5 billion" matches 130,497 and "46.2%" matches 46.21."""
+    out = []
+    for m in FIGURE_PARTS.finditer(sentence):
+        dollar, whole, frac, unit = m.groups()
+        if not dollar and not unit:
+            continue  # a bare number (a year, a quarter, a count) is not a figure
+        decimals = len(frac or '')
+        number = float(whole.replace(',', '') + ('.' + frac if frac else ''))
+        scale = 1.0 if not unit or unit == '%' else SCALE[unit.lower()]
+        out.append((m.group(0).strip(), number * scale, 0.5 * 10 ** -decimals * scale + 1e-9, unit == '%'))
+    return out
+
+
+def unsupported_figures(sentence: str, ids: list[str], values: dict[str, list[float]],
+                        computed: dict[str, float]) -> list[str]:
+    """
+    Figures in a sentence that no id cited in it produced: not a cited fact's value, not a cited calculation's result.
+    Only sentences citing nothing but fact and calc ids are checked; a passage states figures in prose that we cannot
+    match reliably, so a sentence citing one is left alone. Catches "$62,314 million [NVDA_revenue_FY2026_...]" when
+    62,314 is FY minus three quarters, and "21.69% [the two revenue facts]". Magnitudes are compared, so a decrease
+    written without its sign still matches.
+    """
+    if not ids or any(i not in values and i not in computed for i in ids):
+        return []
+    candidates = [abs(v) for i in ids for v in values.get(i, [])]
+    results = [abs(computed[i]) for i in ids if i in computed]
+    bad = []
+    for text, number, tol, percent in _figures(sentence):
+        pool = [r * k for r in results for k in (1, 100)] if percent else candidates + results
+        if not any(abs(number - c) <= tol for c in pool):
+            bad.append(text)
+    return bad
+
+
+def check_citations(answer: str, seen_ids: set[str], values: dict[str, list[float]] | None = None,
+                    computed: dict[str, float] | None = None) -> dict:
     """
     Find what is wrong with an answer's citations without judging whether they support the claims:
-    uncited: sentences stating a figure with no [id], unknown_ids: cited ids that no tool ever returned.
-    seen_ids is every passage and fact id returned so far.
+    uncited: sentences stating a figure with no [id], unknown_ids: cited ids that no tool ever returned,
+    unsupported: (figure, sentence) pairs whose figure none of the sentence's cited facts or calculations produced.
+    seen_ids is every passage, fact and calc id returned so far; values maps fact ids to the numbers they state,
+    computed maps calc ids to their results.
     """
-    uncited, unknown = [], []
+    values, computed = values or {}, computed or {}
+    uncited, unknown, unsupported = [], [], []
     for sentence in _sentences(answer):
         ids = _cited_ids(sentence)
         unknown.extend(i for i in ids if i not in seen_ids and i not in unknown)
         if not ids and FIGURE.search(sentence):
             uncited.append(sentence)
-    return {'uncited': uncited, 'unknown_ids': unknown}
+        unsupported.extend((f, sentence) for f in unsupported_figures(sentence, ids, values, computed))
+    return {'uncited': uncited, 'unknown_ids': unknown, 'unsupported': unsupported}
 
 
 # Ways of saying a filing is missing. Generous on purpose: a false "acknowledged" leaves the answer as it was before
@@ -94,7 +141,13 @@ def revision_request(problems: dict) -> str:
     if problems['uncited']:
         parts.append('These sentences state figures without a citation:\n'
                      + '\n'.join(f'- {s}' for s in problems['uncited'])
-                     + '\nAdd the [id] that supports each figure (call a tool if you need the fact), or remove the figure.')
+                     + '\nAdd the [id] that supports each figure: the calc id for a number from calculate, the fact '
+                       'id for a number from get_financials (call a tool if you need the fact), or remove the figure.')
+    if problems.get('unsupported'):
+        parts.append('These figures are not stated by any id cited in their sentence:\n'
+                     + '\n'.join(f'- {f} in: {s}' for f, s in problems['unsupported'])
+                     + '\nA number computed with calculate cites that calculation\'s id (like [calc_1]), not the facts '
+                       'it was computed from; a reported number cites the fact that states it.')
     if problems['unknown_ids']:
         parts.append('These cited ids were never returned by a tool: ' + ', '.join(problems['unknown_ids']) + '.'
                      '\nReplace each with the id of the tool result that states the claim (the ids are in the results '

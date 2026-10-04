@@ -19,7 +19,7 @@ Rules:
 - Except for the scope rule above, always search before answering: never say the filings do not address a question without having searched.
 - Answer ONLY from tool results. Cite each claim inline with the passage id in square brackets, like [NVDA_2025-01-26_0005], or the fact id for a figure, like [NVDA_revenue_FY2025].
 - For numbers (revenue, income, EPS, cash flow), use get_financials; use search_filings for explanations, strategy and risks. A question may need both.
-- Every number in the answer needs a citation right after it: the fact id if it came from get_financials, the passage id if a passage states it. If you report a number from get_financials, cite that fact id even when a passage also mentions it.
+- Every number in the answer needs a citation right after it: the fact id if it came from get_financials, the calc id (like [calc_1]) if it came from calculate, the passage id if a passage states it. A computed number (growth, a margin, a difference) cites its calc id, never the facts it was computed from. If you report a number from get_financials, cite that fact id even when a passage also mentions it.
 - If get_financials says a company does not report a metric, say exactly that and, if relevant, give the related metrics it does report. Do not use the "do not address" sentence for this.
 - Never do arithmetic yourself. Use the calculate tool for every derived number (growth, margins, differences, ratios), and use only numbers that appear in tool results, passing get_financials values to calculate exactly as returned.
 - Use only passages that directly address the question. Ignore retrieved passages on other topics, even from the right company. Do not pad the answer to a fixed number of points.
@@ -61,6 +61,7 @@ class AgentResult:
     revised: bool = False                            # True if the answer checks sent the answer back once
     uncited: list[str] = field(default_factory=list)       # sentences in the final answer with a figure and no [id]
     unknown_ids: list[str] = field(default_factory=list)   # cited ids in the final answer that no tool returned
+    unsupported: list[tuple] = field(default_factory=list)  # (figure, sentence): no fact or calc cited in it states it
     unacknowledged_missing: list[str] = field(default_factory=list)  # requested filings found missing, answer silent
     resolved_periods: list[dict] = field(default_factory=list)       # relative periods resolved in code (periods.py)
 
@@ -109,6 +110,28 @@ def annotate_novelty(result: str, seen_ids: set[str]) -> tuple[str, int | None]:
     return result, len(new)
 
 
+def record_numbers(result: str, values: dict[str, list[float]], computed: dict[str, float]) -> str:
+    """
+    Give a calculate result an id the answer can cite (calc_1, calc_2, ... per run) and remember its value; remember
+    every fact's value (and as_reported) by id. The citation check uses both to see whether a cited id states the
+    figure next to it. Other results pass through unchanged.
+    """
+    try:
+        data = json.loads(result)
+    except ValueError:
+        return result
+    if not isinstance(data, dict):
+        return result
+    if 'expression' in data and isinstance(data.get('result'), (int, float)):
+        calc_id = f'calc_{len(computed) + 1}'
+        computed[calc_id] = data['result']
+        return json.dumps({'id': calc_id, **data})
+    for r in data.get('results') or []:
+        if isinstance(r, dict) and isinstance(r.get('value'), (int, float)):
+            values[r['id']] = [r['value']] + ([r['as_reported']] if 'as_reported' in r else [])
+    return result
+
+
 def missing_filing(result: str) -> dict | None:
     """The filing a search_filings error reports missing ({"label", "fiscal_year"}), or None for any other result."""
     try:
@@ -150,10 +173,12 @@ def run_agent(question: str, client, tools: list[Tool] | None = None,
     usage = []
     seen_ids: set[str] = set()
     missing: list[dict] = []
+    values: dict[str, list[float]] = {}   # fact id -> the numbers it states
+    computed: dict[str, float] = {}       # calc id -> result
     revised = False
 
     def check(answer: str) -> dict:
-        return {**check_citations(answer, seen_ids),
+        return {**check_citations(answer, seen_ids, values, computed),
                 'unacknowledged_missing': check_missing_filings(answer, asked, missing)}
 
     def call_model(**extra):
@@ -189,6 +214,8 @@ def run_agent(question: str, client, tools: list[Tool] | None = None,
                 result = f'{{"error": "Unknown tool {tc.function.name}"}}'
             else:
                 result = tool.call(tc.function.arguments)
+            result = record_numbers(result, values, computed)
+            seen_ids.update(computed)
             result, new_results = annotate_novelty(result, seen_ids)
             if (m := missing_filing(result)) is not None:
                 missing.append(m)

@@ -94,12 +94,13 @@ def test_agent_can_chain_get_financials_into_calculate(monkeypatch):
         tool_request('get_financials', '{"company": "NVDA", "metric": "revenue", "fiscal_year": 2024, "period": "FY"}', 'c1'),
         tool_request('get_financials', '{"company": "NVDA", "metric": "revenue", "fiscal_year": 2025, "period": "FY"}', 'c2'),
         tool_request('calculate', '{"expression": "(130497 - 60922) / 60922 * 100"}', 'c3'),
-        answer('Revenue grew 114.2% [NVDA_revenue_FY2024] [NVDA_revenue_FY2025].'),
+        answer('Revenue grew 114.2% [calc_1], from $60,922 million [NVDA_revenue_FY2024] to $130,497 million [NVDA_revenue_FY2025].'),
     )
     result = run_agent('NVIDIA revenue growth?', client)
     assert [t['tool'] for t in result.trace] == ['get_financials', 'get_financials', 'calculate']
     assert '114.2' in json.loads(result.trace[2]['result'])['result'].__str__()
     assert 'NVDA_revenue_FY2025' in result.answer
+    assert json.loads(result.trace[2]['result'])['id'] == 'calc_1' and not result.revised  # cited, nothing sent back
 
 
 # --- breakdowns --------------------------------------------------------------------------------------------------
