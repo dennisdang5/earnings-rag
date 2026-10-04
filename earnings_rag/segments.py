@@ -80,7 +80,8 @@ def _number(tag) -> float | None:
     return -value if tag.get('sign') == '-' else value
 
 
-def parse_inline(html: bytes, concepts: dict[str, str], durations: tuple[str, ...] = ('FY',)) -> list[dict]:
+def parse_filing(html: bytes, concepts: dict[str, str],
+                 durations: tuple[str, ...] = ('FY',)) -> tuple[list[dict], list[dict]]:
     """
     Every full-year fact (and fiscal-year-end balance) in a 10-K's inline XBRL for a metric in METRICS, one row per (metric, axis, member, year).
     axis '' means consolidated. Pure: no network, no database.
@@ -88,6 +89,10 @@ def parse_inline(html: bytes, concepts: dict[str, str], durations: tuple[str, ..
     durations: the period lengths to keep, as xbrl._classify names them. A 10-Q passes ('Q',): its three-month figures
     are read directly, and the six- and nine-month year-to-date ones are dropped (a quarter is never derived from them).
     A 10-Q has no full-year duration, so no fiscal year end is found and balances are not read from it.
+
+    Also returns the dollar items tagged on the corporate member alone (ConsolidationItemsAxis=CorporateNonSegmentMember,
+    nothing else): stock compensation, unallocated expenses, acquisition costs, but also interest and other non-operating
+    income. add_corporate_remainder matches them against a missing corporate figure.
     """
     soup = BeautifulSoup(html, 'xml')
 
@@ -138,9 +143,31 @@ def parse_inline(html: bytes, concepts: dict[str, str], durations: tuple[str, ..
     # (139,297 where the earlier filings give -6,507). A reconciling item that repeats the total is a tagging artifact.
     totals = {(f['metric'], f['period_start'], f['period_end']): f['value'] for f in found.values()
               if f['axis'] == 'total'}
-    return [f for f in found.values() if f['axis'] != 'total'
+    rows = [f for f in found.values() if f['axis'] != 'total'
             and not (f['segment'] == CORPORATE and f['value'] != 0
                      and totals.get((f['metric'], f['period_start'], f['period_end'])) == f['value'])]
+
+    items = {}
+    for tag in soup.find_all('nonFraction'):
+        unit = (tag.get('unitRef') or '').lower()
+        if tag.get('contextRef') not in contexts or 'usd' not in unit or 'share' in unit:
+            continue
+        dims, start, end = contexts[tag['contextRef']]
+        if (start is None or len(dims) != 1 or dims[0][0] != 'ConsolidationItemsAxis'
+                or not dims[0][1].endswith('CorporateNonSegmentMember')
+                or _classify((date.fromisoformat(end) - date.fromisoformat(start)).days) not in durations):
+            continue
+        value = _number(tag)
+        concept = tag.get('name', '').split(':')[-1]
+        if value is not None:
+            items.setdefault((concept, start, end),
+                             {'concept': concept, 'value': value, 'period_start': start, 'period_end': end})
+    return rows, list(items.values())
+
+
+def parse_inline(html: bytes, concepts: dict[str, str], durations: tuple[str, ...] = ('FY',)) -> list[dict]:
+    """parse_filing's facts rows without the corporate items."""
+    return parse_filing(html, concepts, durations)[0]
 
 
 def _filing_for(companyfacts: dict, concepts: dict[str, str], report_date: str, form: str = '10-K') -> dict | None:
@@ -185,7 +212,7 @@ def normalize_segments(parsed: dict[str, list[dict]], companyfacts: dict, ticker
                     continue  # not a quarter end we can name
                 fy, period = label
             this_filing.setdefault((f['metric'], f['axis'], fy, period), []).append({
-                **f, 'ticker': ticker, 'fiscal_year': fy, 'fiscal_period': period,
+                **f, 'ticker': ticker, 'fiscal_year': fy, 'fiscal_period': period, 'filing': report_date,
                 'unit': METRICS[f['metric']]['unit'], 'derived': False, 'form': filing['form'],
                 'accession': filing['accn'], 'filed': filing['filed'], 'split_factor': 1})
         groups |= this_filing  # replaces any breakdown an earlier filing gave for the same period
@@ -243,14 +270,34 @@ def sum_check(rows: list[dict], consolidated: dict[tuple, float]) -> tuple[int, 
     return checked, failed
 
 
-def add_corporate_remainder(rows: list[dict], consolidated: dict[tuple, dict]) -> list[dict]:
+def match_items(target: float, items: list[dict]) -> list[dict] | None:
+    """
+    The one subset of corporate items (positive amounts, i.e. expenses) that adds up to target within a million, or None
+    if no subset or more than one does. NVIDIA FY2026 tags six corporate items, including interest income and other
+    non-operating income, and only stock compensation + unallocated expenses + acquisition costs make up its 8,910.
+    """
+    from itertools import combinations
+
+    pool = [i for i in items if i['value'] > 0]
+    if target <= 0 or not pool or len(pool) > MAX_SUBSET_MEMBERS:
+        return None
+    matches = [combo for size in range(1, len(pool) + 1) for combo in combinations(pool, size)
+               if abs(sum(i['value'] for i in combo) - target) <= SUM_TOLERANCE_M * 1e6]
+    return list(matches[0]) if len(matches) == 1 else None
+
+
+def add_corporate_remainder(rows: list[dict], consolidated: dict[tuple, dict],
+                            items: dict[tuple, list[dict]] | None = None, warnings: list[str] | None = None) -> list[dict]:
     """
     Companies keep some costs out of their segments (unallocated stock compensation and R&D), and not every filing tags
-    that reconciling line: NVIDIA FY2026 operating income has none, Apple's pre-2023 filings tag it only piecewise. For a
-    business-segment breakdown with no reported corporate row, the remainder is the consolidated total minus the
-    segments, both figures the company reported. Stored as 'Corporate and other' with derived=True, the same flag as a
-    derived Q4. Business segments only: product and geography members overlap, so a remainder there means nothing.
-    consolidated maps (metric, fiscal_year) -> the consolidated FY facts row the remainder is measured against.
+    that reconciling line as one figure: NVIDIA from FY2024 tags a corporate "total" equal to the segment total (dropped
+    by parse_inline), Apple before FY2025 tags only part of it. For a business-segment breakdown with no reported
+    corporate row, the gap is the consolidated total minus the segments. If the corporate items the same filing tags
+    (items: (filing, start, end) -> parse_filing items) contain exactly one subset that adds up to the gap, the row is
+    their sum, derived=False (every input is reported and the identity holds), with the items in `concept`. Otherwise
+    the row is the gap itself, derived=True, citing the filing of the total; if items were tagged but none matched, a
+    line goes to `warnings`. Business segments only: product and geography members overlap, so a remainder there means
+    nothing. consolidated maps (metric, fiscal_year) -> the consolidated facts row the gap is measured against.
     """
     groups: dict[tuple, list[dict]] = {}
     for r in rows:
@@ -265,7 +312,18 @@ def add_corporate_remainder(rows: list[dict], consolidated: dict[tuple, dict]) -
         remainder = total['value'] - sum(m['value'] for m in members)
         if abs(remainder) <= SUM_TOLERANCE_M * 1e6:
             continue  # the segments already add up
-        out.append({**members[0], 'segment': CORPORATE, 'value': remainder, 'concept': total['concept'],
+        first = members[0]
+        tagged = (items or {}).get((first.get('filing'), first['period_start'], first['period_end']), [])
+        match = match_items(-remainder, tagged)
+        if match:
+            out.append({**first, 'segment': CORPORATE, 'value': -sum(i['value'] for i in match),
+                        'concept': '+'.join(i['concept'] for i in match), 'derived': False})
+            continue
+        if tagged and warnings is not None:
+            listed = ', '.join(f"{i['concept']} {i['value'] / 1e6:,.0f}M" for i in tagged)
+            warnings.append(f"{key[0]} {first['fiscal_period']} FY{key[1]}: corporate items tagged ({listed}) do not "
+                            f"account for the gap of {remainder / 1e6:,.0f}M, derived instead")
+        out.append({**first, 'segment': CORPORATE, 'value': remainder, 'concept': total['concept'],
                     'period_start': str(total['period_start']), 'period_end': str(total['period_end']),
                     'derived': True, 'form': total['form'], 'accession': total['accession'],
                     'filed': str(total['filed'])})
@@ -283,8 +341,14 @@ def ingest_segments(ticker: str, companyfacts: dict) -> bool:
 
     concepts = resolve(companyfacts, ticker).primary
     sources = {'10-K': (settings.raw_dir / ticker, ('FY',)), '10-Q': (settings.raw_dir / ticker / '10-Q', ('Q',))}
-    parsed = {form: {p.stem: parse_inline(p.read_bytes(), concepts, durations) for p in sorted(folder.glob('*.html'))}
-              for form, (folder, durations) in sources.items()}
+    parsed: dict[str, dict[str, list[dict]]] = {}
+    items: dict[tuple, list[dict]] = {}   # (filing, period start, period end) -> corporate items
+    for form, (folder, durations) in sources.items():
+        parsed[form] = {}
+        for p in sorted(folder.glob('*.html')):
+            parsed[form][p.stem], tagged = parse_filing(p.read_bytes(), concepts, durations)
+            for i in tagged:
+                items.setdefault((p.stem, i['period_start'], i['period_end']), []).append(i)
     checked, bad = cross_check({f'{form}/{d}': rows for form, by_date in parsed.items() for d, rows in by_date.items()},
                                companyfacts, ticker)
     print(f'{ticker}: segment parser check: {checked} consolidated values vs the SEC API, {len(bad)} mismatches')
@@ -296,20 +360,31 @@ def ingest_segments(ticker: str, companyfacts: dict) -> bool:
 
     rows = [r for form, by_date in parsed.items() for r in normalize_segments(by_date, companyfacts, ticker, form)]
     consolidated = xbrl.normalize(companyfacts, ticker)
-    derived, reconciled, checked_axes = [], 0, 0
+    # Each breakdown ends in one of four outcomes: it reconciles as reported (incl. a reported corporate figure), via
+    # the corporate items the filing tags, via a derived remainder, or not at all (a real problem worth reading)
+    corporate, warnings, checked_axes = [], [], 0
+    outcomes: dict[str, list[str]] = {'items': [], 'derived': [], 'failed': []}
     for period in ('FY', 'Q1', 'Q2', 'Q3'):
         totals = {(r['metric'], r['fiscal_year']): r for r in consolidated if r['fiscal_period'] == period}
         period_rows = [r for r in rows if r['fiscal_period'] == period]
         axes_checked, failed = sum_check(period_rows, {k: r['value'] for k, r in totals.items()})
         checked_axes += axes_checked
-        reconciled += axes_checked - len(failed)
+        added = add_corporate_remainder(period_rows, totals, items, warnings)
+        corporate += added
+        closed = {(r['metric'], r['axis'], r['fiscal_year']): r['derived'] for r in added}
         for metric, axis, fy in failed:
-            print(f'  does not reconcile: {metric} by {axis} {period} FY{fy}')
-        for r in add_corporate_remainder(period_rows, totals):
-            print(f'  derived {CORPORATE} {r["metric"]} {period} FY{r["fiscal_year"]}: {r["value"] / 1e6:,.0f}M')
-            derived.append(r)
-    print(f'{ticker}: {len(rows)} segment facts, {reconciled}/{checked_axes} breakdowns reconcile to the total')
-    replace_segment_facts(ticker, rows + derived)
+            kind = 'failed' if (metric, axis, fy) not in closed else 'derived' if closed[(metric, axis, fy)] else 'items'
+            outcomes[kind].append(f'{metric} by {axis} {period} FY{fy}')
+    as_reported = checked_axes - sum(len(v) for v in outcomes.values())
+    print(f'{ticker}: {len(rows)} segment facts; of {checked_axes} breakdowns {as_reported} reconcile as reported, '
+          f'{len(outcomes["items"])} via reported corporate items, {len(outcomes["derived"])} via a derived remainder, '
+          f'{len(outcomes["failed"])} do not reconcile')
+    for label, key in (('derived remainder', 'derived'), ('DOES NOT RECONCILE', 'failed')):
+        if outcomes[key]:
+            print(f'  {label}: ' + '; '.join(outcomes[key]))
+    for w in warnings:
+        print(f'  {w}')
+    replace_segment_facts(ticker, rows + corporate)
     return True
 
 
