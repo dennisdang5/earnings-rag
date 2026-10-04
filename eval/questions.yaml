@@ -205,3 +205,46 @@
 
 - question: 'What are Amazon Web Services operating margins?'
   expect_refusal: true
+
+# Quarterly questions: `filters` are search_filings arguments (company, fiscal_year, period, latest). They are scored
+# separately from the 10-K set above, with their own gate (--min-recall-quarterly).
+- question: 'What export controls does NVIDIA say could limit its sales, in its most recent quarterly report?'
+  filters: {company: NVDA, latest: true}
+  anchors:
+    - "unilateral worldwide controls restricting GPUs"
+    - "Export controls may disrupt our supply and distribution chain"
+
+- question: 'What penalties could NVIDIA face if it violated export control laws, according to its Q2 fiscal 2027 10-Q?'
+  filters: {company: NVDA, fiscal_year: 2027, period: Q2}
+  anchors:
+    - "violated export control laws"
+
+- question: 'What does Apple say about tariffs in its latest 10-Q?'
+  filters: {company: AAPL, latest: true}
+  anchors:
+    - "Tariffs and Other Measures"
+
+- question: 'What drove the change in Apple Products gross margin in the third quarter of fiscal 2026?'
+  filters: {company: AAPL, fiscal_year: 2026, period: Q3}
+  anchors:
+    - "different mix of products and tariff refunds"
+
+- question: 'What tariffs did Apple describe in its third quarter fiscal 2025 10-Q?'
+  filters: {company: AAPL, fiscal_year: 2025, period: Q3}
+  anchors:
+    - "U.S. Tariffs"
+
+- question: 'How did Capital One describe its provision for credit losses in its latest quarterly report?'
+  filters: {company: COF, latest: true}
+  anchors:
+    - "Our provision for credit losses decreased by $8.4 billion"
+
+- question: 'What was Capital One net charge-off rate in the second quarter of 2026?'
+  filters: {company: COF, fiscal_year: 2026, period: Q2}
+  anchors:
+    - "net charge-off rate decreased by 1 basis point"
+
+- question: 'How did the Discover acquisition affect Capital One results in the second quarter of 2026?'
+  filters: {company: COF, fiscal_year: 2026, period: Q2}
+  anchors:
+    - "addition of Discover"
