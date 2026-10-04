@@ -5,7 +5,7 @@ from bs4 import BeautifulSoup
 
 from earnings_rag.config import settings
 from earnings_rag.resolver import resolve
-from earnings_rag.xbrl import METRICS, _classify
+from earnings_rag.xbrl import METRICS, _classify, fiscal_calendar, period_label
 
 # The three standard axes that carry breakdowns, the same for every company.
 AXES = {'ProductOrServiceAxis': 'product',
@@ -80,10 +80,14 @@ def _number(tag) -> float | None:
     return -value if tag.get('sign') == '-' else value
 
 
-def parse_inline(html: bytes, concepts: dict[str, str]) -> list[dict]:
+def parse_inline(html: bytes, concepts: dict[str, str], durations: tuple[str, ...] = ('FY',)) -> list[dict]:
     """
     Every full-year fact (and fiscal-year-end balance) in a 10-K's inline XBRL for a metric in METRICS, one row per (metric, axis, member, year).
     axis '' means consolidated. Pure: no network, no database.
+
+    durations: the period lengths to keep, as xbrl._classify names them. A 10-Q passes ('Q',): its three-month figures
+    are read directly, and the six- and nine-month year-to-date ones are dropped (a quarter is never derived from them).
+    A 10-Q has no full-year duration, so no fiscal year end is found and balances are not read from it.
     """
     soup = BeautifulSoup(html, 'xml')
 
@@ -118,7 +122,7 @@ def parse_inline(html: bytes, concepts: dict[str, str]) -> list[dict]:
             if start is not None or end not in year_ends:
                 continue
             start = end  # a balance has no start; stored as a one-day period like the consolidated balance rows
-        elif start is None or _classify((date.fromisoformat(end) - date.fromisoformat(start)).days) != 'FY':
+        elif start is None or _classify((date.fromisoformat(end) - date.fromisoformat(start)).days) not in durations:
             continue
         located = _axis_and_member(dims)
         value = _number(tag)
@@ -139,44 +143,54 @@ def parse_inline(html: bytes, concepts: dict[str, str]) -> list[dict]:
                      and totals.get((f['metric'], f['period_start'], f['period_end'])) == f['value'])]
 
 
-def _filing_for(companyfacts: dict, concepts: dict[str, str], report_date: str) -> dict | None:
-    """The 10-K (accession, filed) that first reported this fiscal year end. The HTML does not say."""
+def _filing_for(companyfacts: dict, concepts: dict[str, str], report_date: str, form: str = '10-K') -> dict | None:
+    """The filing of this form (accession, filed) that first reported this period end. The HTML does not say."""
     gaap = companyfacts['facts']['us-gaap']
     best = None
     for metric, concept in concepts.items():
         for r in gaap.get(concept, {}).get('units', {}).get(METRICS[metric]['unit'], []):
-            if r['end'] == report_date and r['form'] == '10-K' and (best is None or r['filed'] < best['filed']):
+            if r['end'] == report_date and r['form'] == form and (best is None or r['filed'] < best['filed']):
                 best = r
     return best
 
 
-def normalize_segments(parsed: dict[str, list[dict]], companyfacts: dict, ticker: str) -> list[dict]:
+def normalize_segments(parsed: dict[str, list[dict]], companyfacts: dict, ticker: str, form: str = '10-K') -> list[dict]:
     """
-    parsed: {report date: parse_inline rows} per 10-K. One facts row per (metric, axis, segment, fiscal year).
+    parsed: {report date: parse_inline rows} per filing of this form. One facts row per (metric, axis, segment, fiscal
+    year, fiscal period): 'FY' for 10-Ks, Q1-Q3 for 10-Qs, labelled by xbrl.period_label from the period's end date like
+    the consolidated facts and the text chunks (a quarter's calendar year is not its fiscal year).
 
     The latest filing wins for a whole breakdown, not slice by slice. NVIDIA's FY2026 10-K re-presented FY2025 revenue
     by geography on a new basis and dropped Singapore; taking each slice from its latest filing kept the old Singapore
     row next to the new US/China/Taiwan rows, and the year summed to 154,181 against a 130,497 total. So each
-    (metric, axis, fiscal year) comes entirely from the latest filing that reports it.
+    (metric, axis, fiscal year, fiscal period) comes entirely from the latest filing that reports it. A 10-Q also
+    carries last year's quarter as a comparison, so a quarter's final figures come from the following year's 10-Q.
     """
     concepts = resolve(companyfacts, ticker).primary
+    calendar = fiscal_calendar(companyfacts, ticker) if form == '10-Q' else None
     groups: dict[tuple, list[dict]] = {}
     for report_date in sorted(parsed):
-        filing = _filing_for(companyfacts, concepts, report_date)
+        filing = _filing_for(companyfacts, concepts, report_date, form)
         if filing is None:
             continue
         this_filing: dict[tuple, list[dict]] = {}
         for f in parsed[report_date]:
             if not f['axis']:
                 continue
-            fy = int(f['period_end'][:4])
-            this_filing.setdefault((f['metric'], f['axis'], fy), []).append({
-                **f, 'ticker': ticker, 'fiscal_year': fy, 'fiscal_period': 'FY',
+            if calendar is None:
+                fy, period = int(f['period_end'][:4]), 'FY'
+            else:
+                label = period_label(date.fromisoformat(f['period_end']), calendar)
+                if label is None or label[1] == 'FY':
+                    continue  # not a quarter end we can name
+                fy, period = label
+            this_filing.setdefault((f['metric'], f['axis'], fy, period), []).append({
+                **f, 'ticker': ticker, 'fiscal_year': fy, 'fiscal_period': period,
                 'unit': METRICS[f['metric']]['unit'], 'derived': False, 'form': filing['form'],
                 'accession': filing['accn'], 'filed': filing['filed'], 'split_factor': 1})
-        groups |= this_filing  # replaces any breakdown an earlier filing gave for the same year
+        groups |= this_filing  # replaces any breakdown an earlier filing gave for the same period
     rows = [r for g in groups.values() for r in g]
-    return sorted(rows, key=lambda r: (r['metric'], r['axis'], r['fiscal_year'], r['segment']))
+    return sorted(rows, key=lambda r: (r['metric'], r['axis'], r['fiscal_year'], r['fiscal_period'], r['segment']))
 
 
 def cross_check(parsed: dict[str, list[dict]], companyfacts: dict, ticker: str) -> tuple[int, list[dict]]:
@@ -259,13 +273,20 @@ def add_corporate_remainder(rows: list[dict], consolidated: dict[tuple, dict]) -
 
 
 def ingest_segments(ticker: str, companyfacts: dict) -> bool:
-    """Parse the cached 10-Ks, validate, store. Returns False (storing nothing) if the parser disagrees with the API."""
+    """
+    Parse the cached 10-Ks and 10-Qs, validate, store. Returns False (storing nothing) if the parser disagrees with the
+    API. Each period (FY, Q1-Q3) is checked and completed on its own: its slices must reconcile to that period's
+    consolidated figure, and its corporate remainder is measured against it.
+    """
     from earnings_rag import xbrl
     from earnings_rag.store import replace_segment_facts
 
     concepts = resolve(companyfacts, ticker).primary
-    parsed = {p.stem: parse_inline(p.read_bytes(), concepts) for p in sorted((settings.raw_dir / ticker).glob('*.html'))}
-    checked, bad = cross_check(parsed, companyfacts, ticker)
+    sources = {'10-K': (settings.raw_dir / ticker, ('FY',)), '10-Q': (settings.raw_dir / ticker / '10-Q', ('Q',))}
+    parsed = {form: {p.stem: parse_inline(p.read_bytes(), concepts, durations) for p in sorted(folder.glob('*.html'))}
+              for form, (folder, durations) in sources.items()}
+    checked, bad = cross_check({f'{form}/{d}': rows for form, by_date in parsed.items() for d, rows in by_date.items()},
+                               companyfacts, ticker)
     print(f'{ticker}: segment parser check: {checked} consolidated values vs the SEC API, {len(bad)} mismatches')
     for b in bad[:5]:
         print(f'  mismatch {b}')
@@ -273,18 +294,21 @@ def ingest_segments(ticker: str, companyfacts: dict) -> bool:
         print(f'{ticker}: segment parser disagrees with the API, segments not stored')
         return False
 
-    rows = normalize_segments(parsed, companyfacts, ticker)
-    totals = {(r['metric'], r['fiscal_year']): r for r in xbrl.normalize(companyfacts, ticker)
-              if r['fiscal_period'] == 'FY'}
-    axes_checked, failed = sum_check(rows, {k: r['value'] for k, r in totals.items()})
-    print(f'{ticker}: {len(rows)} segment facts, {axes_checked - len(failed)}/{axes_checked} breakdowns reconcile '
-          f'to the total')
-    for metric, axis, fy in failed:
-        print(f'  does not reconcile: {metric} by {axis} FY{fy}')
-
-    derived = add_corporate_remainder(rows, totals)
-    for r in derived:
-        print(f'  derived {CORPORATE} {r["metric"]} FY{r["fiscal_year"]}: {r["value"] / 1e6:,.0f}M')
+    rows = [r for form, by_date in parsed.items() for r in normalize_segments(by_date, companyfacts, ticker, form)]
+    consolidated = xbrl.normalize(companyfacts, ticker)
+    derived, reconciled, checked_axes = [], 0, 0
+    for period in ('FY', 'Q1', 'Q2', 'Q3'):
+        totals = {(r['metric'], r['fiscal_year']): r for r in consolidated if r['fiscal_period'] == period}
+        period_rows = [r for r in rows if r['fiscal_period'] == period]
+        axes_checked, failed = sum_check(period_rows, {k: r['value'] for k, r in totals.items()})
+        checked_axes += axes_checked
+        reconciled += axes_checked - len(failed)
+        for metric, axis, fy in failed:
+            print(f'  does not reconcile: {metric} by {axis} {period} FY{fy}')
+        for r in add_corporate_remainder(period_rows, totals):
+            print(f'  derived {CORPORATE} {r["metric"]} {period} FY{r["fiscal_year"]}: {r["value"] / 1e6:,.0f}M')
+            derived.append(r)
+    print(f'{ticker}: {len(rows)} segment facts, {reconciled}/{checked_axes} breakdowns reconcile to the total')
     replace_segment_facts(ticker, rows + derived)
     return True
 
