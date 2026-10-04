@@ -27,7 +27,10 @@ def load_fixture() -> int:
                 r['period'],
                 r['chunk_index'],
                 r['text'],
-                str(r['embedding'])
+                str(r['embedding']),
+                r['form'],
+                r['fiscal_year'],
+                r['fiscal_period'],
             ))
 
     with connect() as conn:
@@ -35,8 +38,8 @@ def load_fixture() -> int:
             cur.execute('TRUNCATE chunks')
             cur.executemany(
                 """
-                INSERT INTO chunks (id, ticker, period, chunk_index, text, embedding)
-                VALUES (%s, %s, %s, %s, %s, %s)
+                INSERT INTO chunks (id, ticker, period, chunk_index, text, embedding, form, fiscal_year, fiscal_period)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """,
                 params
             )

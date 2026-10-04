@@ -20,6 +20,15 @@ COMPETITORS = [
 
 TARGET_TOTAL = 200
 
+# Whole filings added for the quarterly questions: (ticker, form, fiscal_year, fiscal_period). `latest` in CI means the
+# newest filing in the fixture, so each company's newest filing must be here in full.
+QUARTERLY_FILINGS = [
+    ('NVDA', '10-Q', 2027, 'Q2'),
+    ('AAPL', '10-Q', 2026, 'Q3'),
+    ('AAPL', '10-Q', 2025, 'Q3'),
+    ('COF', '10-Q', 2026, 'Q2'),
+]
+
 def build_fixture() -> None:
     questions = load_questions(REPO_ROOT / 'eval' / 'questions.yaml')
 
@@ -32,15 +41,28 @@ def build_fixture() -> None:
 
     with connect() as conn:
         with conn.cursor() as cur:
-            cur.execute(
-                'SELECT id FROM chunks WHERE id != ALL(%s) ORDER BY random() LIMIT %s',
-                (list(wanted), TARGET_TOTAL - len(wanted)),
-            )
-            for row in cur.fetchall():
-                wanted.add(row[0])
+            if FIXTURE_PATH.exists():
+                # Keep the existing sample, so the 10-K recall (and its CI gate) cannot move when the fixture grows.
+                # Quarterly chunks from the sample are not kept: whole filings are added below.
+                with FIXTURE_PATH.open(encoding='utf-8') as f:
+                    kept = [json.loads(line)['id'] for line in f]
+                cur.execute("SELECT id FROM chunks WHERE id = ANY(%s) AND form = '10-K'", (kept,))
+                wanted.update(row[0] for row in cur.fetchall())
+            else:
+                cur.execute(
+                    "SELECT id FROM chunks WHERE form = '10-K' AND id != ALL(%s) ORDER BY random() LIMIT %s",
+                    (list(wanted), TARGET_TOTAL - len(wanted)),
+                )
+                for row in cur.fetchall():
+                    wanted.add(row[0])
+
+            for ticker, form, year, period in QUARTERLY_FILINGS:
+                cur.execute('SELECT id FROM chunks WHERE ticker = %s AND form = %s AND fiscal_year = %s AND fiscal_period = %s',
+                            (ticker, form, year, period))
+                wanted.update(row[0] for row in cur.fetchall())
 
             cur.execute(
-                """SELECT id, ticker, period, chunk_index, text, embedding::text
+                """SELECT id, ticker, period, chunk_index, text, embedding::text, form, fiscal_year, fiscal_period
                 FROM chunks WHERE id = ANY(%s) ORDER BY id""",
                 (list(wanted),),
             )
@@ -54,7 +76,10 @@ def build_fixture() -> None:
                 'period': row[2],
                 'chunk_index': row[3],
                 'text': row[4],
-                'embedding': json.loads(row[5])
+                'embedding': json.loads(row[5]),
+                'form': row[6],
+                'fiscal_year': row[7],
+                'fiscal_period': row[8],
             }
             f.write(json.dumps(record) + '\n')
 
@@ -65,14 +90,17 @@ def build_query_vectors() -> None:
     from earnings_rag.embeddings import embed_texts
     questions = load_questions(REPO_ROOT / 'eval' / 'questions.yaml')
 
-    texts = []
-    for q in questions:
-        texts.append(q['question'])
-    vectors = embed_texts(texts)
-
+    # embed only questions without a stored vector: the old vectors stay byte-identical, so the 10-K recall cannot move
     mapping = {}
-    for text, vector in zip(texts, vectors):
-        mapping[text] = vector
+    if QUERY_PATH.exists():
+        with QUERY_PATH.open(encoding='utf-8') as f:
+            mapping = json.load(f)
+    questions_text = [q['question'] for q in questions]
+    texts = [t for t in dict.fromkeys(questions_text) if t not in mapping]
+    if texts:
+        for text, vector in zip(texts, embed_texts(texts)):
+            mapping[text] = vector
+    mapping = {t: mapping[t] for t in questions_text}  # drop vectors of questions that no longer exist
 
     with QUERY_PATH.open('w', encoding='utf-8') as f:
         json.dump(mapping, f)

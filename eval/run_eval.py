@@ -1,5 +1,6 @@
 import sys
 import json
+from earnings_rag.agent.tools import SearchFilingsArgs, search_filters
 from earnings_rag.pipeline import retrieve, ask
 from earnings_rag.config import REPO_ROOT
 from earnings_rag.store import connect
@@ -36,17 +37,49 @@ def check_anchors_present(questions: list[dict]) -> None:
             print(f'    {question}')
         raise SystemExit(1)
 
-def score(questions: list[dict], k: int = 5, match: str = 'anchor', offline: bool = False, route: bool = True) -> dict:
+def quarterly_search(q: dict, k: int, vector: list[float] | None) -> list[dict]:
     """
-    Compute recall@k over the question set
+    Run a question the way the agent's search_filings does: its `filters` (company, fiscal_year, period, latest) go
+    through search_filters, the same mapping the tool uses, then retrieve with keyword routing off.
+    """
+    args = SearchFilingsArgs(query=q['question'], **q['filters'])
+    f = search_filters(args)
+    if 'error' in f:
+        raise SystemExit(f'bad filters for {q["question"][:60]}: {f["error"]}')
+    return retrieve(q['question'], k=k, ticker=args.company, route=False, query_vector=vector, form=f['form'],
+                    fiscal_year=args.fiscal_year, fiscal_period=f['fiscal_period'], latest=args.latest)
+
+
+def wrong_filing(q: dict, results: list[dict]) -> list[str]:
+    """Ids of results outside the filing the filters asked for (a filter that did nothing shows up here, not as recall)."""
+    filters = q['filters']
+    bad = []
+    for r in results:
+        if filters.get('company') and r['ticker'] != filters['company']:
+            bad.append(r['id'])
+        elif filters.get('fiscal_year') is not None and r.get('fiscal_year') != filters['fiscal_year']:
+            bad.append(r['id'])
+        elif filters.get('period') in ('Q1', 'Q2', 'Q3') and (r.get('form'), r.get('fiscal_period')) != ('10-Q', filters['period']):
+            bad.append(r['id'])
+    return bad
+
+
+def score(questions: list[dict], k: int = 5, match: str = 'anchor', offline: bool = False, route: bool = True,
+          quarterly: bool = False) -> dict:
+    """
+    Compute recall@k over the question set. quarterly=False scores the questions without `filters` (the 10-K set, whose
+    CI gate is unchanged); quarterly=True scores only those with `filters`, searched like the agent's search_filings.
     """
     vectors = load_query_vectors(offline)
 
     hits = 0
     scored = 0
     misses = []
+    misfiled = []
 
     for q in questions:
+        if bool(q.get('filters')) != quarterly:
+            continue
         if q.get('expect_refusal'):
             continue # refusal questions have no correct chunk
 
@@ -60,7 +93,11 @@ def score(questions: list[dict], k: int = 5, match: str = 'anchor', offline: boo
         if offline and vector is None:
             raise SystemExit(f'No precomputed vector for: {q["question"][:60]}')
 
-        results = retrieve(q['question'], k=k, query_vector=vector, route=route)
+        if quarterly:
+            results = quarterly_search(q, k, vector)
+            misfiled.extend((q['question'], rid) for rid in wrong_filing(q, results))
+        else:
+            results = retrieve(q['question'], k=k, query_vector=vector, route=route)
 
         if match == 'anchor':
             is_hit = False
@@ -85,10 +122,11 @@ def score(questions: list[dict], k: int = 5, match: str = 'anchor', offline: boo
                 got.append(r['id'])
             misses.append((q['question'], anchors, got))
 
-    return {'recall_at_k': hits / scored,
+    return {'recall_at_k': hits / scored if scored else 0.0,
             'hits': hits,
             'scored': scored,
-            'misses': misses
+            'misses': misses,
+            'misfiled': misfiled,
     }
 
 def score_refusals(questions: list[dict]) -> dict:
@@ -104,8 +142,8 @@ def score_refusals(questions: list[dict]) -> dict:
         expect = bool(q.get('expect_refusal'))
         anchors = q.get('anchors') or []
 
-        if not expect and not anchors:
-            continue
+        if q.get('filters') or (not expect and not anchors):
+            continue  # quarterly questions need the agent's filters; the fixed pipeline cannot answer them
 
         checked += 1
         print(f'  [{checked}] {q["question"][:70]}')
@@ -247,6 +285,10 @@ def main() -> None:
     if '--min-recall' in sys.argv:
         threshold = float(sys.argv[sys.argv.index('--min-recall') + 1])
 
+    quarterly_threshold = None
+    if '--min-recall-quarterly' in sys.argv:
+        quarterly_threshold = float(sys.argv[sys.argv.index('--min-recall-quarterly') + 1])
+
     if match_mode == 'anchor':
         check_anchors_present(questions)
 
@@ -270,8 +312,29 @@ def main() -> None:
         print(f'  anchors: {anchors}')
         print(f'  got:     {got}')
 
+    failed = False
     if threshold is not None and result['recall_at_k'] < threshold:
         print(f'\nFAIL: recall {result["recall_at_k"]:.3f} below threshold {threshold}')
+        failed = True
+
+    if match_mode == 'anchor' and any(q.get('filters') for q in questions):
+        qres = score(questions, match=match_mode, offline=offline, route=route, quarterly=True)
+        print(f'\nquarterly (filtered like search_filings) recall@5: {qres["recall_at_k"]:.3f} '
+              f'({qres["hits"]}/{qres["scored"]})')
+        for question, anchors, got in qres['misses']:
+            print(f'\nQUARTERLY MISS: {question}')
+            print(f'  anchors: {anchors}')
+            print(f'  got:     {got}')
+        for question, rid in qres['misfiled']:
+            print(f'\nWRONG FILING: {rid} for {question}')
+        if qres['misfiled']:
+            print('FAIL: results outside the requested filing (a filter did nothing)')
+            failed = True
+        if quarterly_threshold is not None and qres['recall_at_k'] < quarterly_threshold:
+            print(f'FAIL: quarterly recall {qres["recall_at_k"]:.3f} below threshold {quarterly_threshold}')
+            failed = True
+
+    if failed:
         raise SystemExit(1)
 
 

@@ -97,7 +97,11 @@ def missing_label(company: str | None, fiscal_year: int | None, period: str | No
     return ' '.join(p for p in (company, when, form or 'filing') if p)
 
 
-def search_filings(args: SearchFilingsArgs) -> dict:
+def search_filters(args: SearchFilingsArgs) -> dict:
+    """
+    Turn the tool's arguments into the filters retrieve() takes: {'form', 'fiscal_period', 'notes'}, or {'error'}.
+    Pure, so the quarterly eval in CI exercises the same mapping the agent uses.
+    """
     if args.latest and (args.fiscal_year is not None or args.period is not None):
         return {'error': 'latest cannot be combined with fiscal_year or period: use one or the other.'}
     if args.period is not None and args.fiscal_year is None:
@@ -116,6 +120,14 @@ def search_filings(args: SearchFilingsArgs) -> dict:
     if args.period is None and not args.latest:
         notes.append('Searched annual reports (10-K) only. For a quarter, or the latest or most recent report, set period '
                      '(Q1-Q3) or latest=true.')
+    return {'form': form, 'fiscal_period': period, 'notes': notes}
+
+
+def search_filings(args: SearchFilingsArgs) -> dict:
+    filters = search_filters(args)
+    if 'error' in filters:
+        return filters
+    form, period, notes = filters['form'], filters['fiscal_period'], filters['notes']
 
     # route=False: the model decides the company explicitly, so keyword routing must not second-guess it
     hits = retrieve(args.query, ticker=args.company, route=False, form=form, fiscal_year=args.fiscal_year,

@@ -48,4 +48,4 @@ jobs:
         run: python eval/load_fixture.py
 
       - name: Run retrieval eval
-        run: python eval/run_eval.py --match anchor --offline --min-recall 0.75
+        run: python eval/run_eval.py --match anchor --offline --min-recall 0.75 --min-recall-quarterly 0.75
