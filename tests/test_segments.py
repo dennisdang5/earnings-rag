@@ -176,6 +176,7 @@ def test_ingest_replaces_the_tickers_breakdown_rows_including_the_derived_remain
     stored = {}
     monkeypatch.setattr(segments, 'settings', type('S', (), {'raw_dir': tmp_path})())
     monkeypatch.setattr('earnings_rag.store.replace_segment_facts', lambda t, rows: stored.update({t: rows}))
+    monkeypatch.setattr(segments, 'slice_names', lambda *args: {})   # label linkbases are fetched: never in tests
     assert segments.ingest_segments('NVDA', facts)
     assert [(r['segment'], r['value'] / M, r['derived']) for r in stored['NVDA']] == [
         ('Compute and Networking', 100, False), (CORPORATE, -10, True)]
