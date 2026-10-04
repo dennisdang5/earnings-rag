@@ -242,3 +242,31 @@ def test_cross_check_compares_a_balance_with_the_apis_date_only_value():
     facts = {'facts': {'us-gaap': {'Deposits': {'units': {'USD': [
         {'end': '2024-12-31', 'val': 362_707 * M, 'accn': 'a', 'form': '10-K', 'filed': '2025-02-20'}]}}}}}
     assert cross_check({'x': parse_inline(html, COF)}, facts, 'COF') == (1, [])
+
+
+# --- quarterly (10-Q) segment figures ----------------------------------------------------------------------------
+
+Q2 = ('2025-04-28', '2025-07-27')            # NVIDIA Q2 FY2026: its calendar year is 2025, its fiscal year 2026
+H1 = ('2025-01-27', '2025-07-27')
+
+
+def test_a_10q_keeps_the_three_month_figure_and_drops_year_to_date():
+    html = ixbrl({'q': (*Q2, [(PRODUCT, 'nvda:DataCenterMember')]), 'y': (*H1, [(PRODUCT, 'nvda:DataCenterMember')])},
+                 [('Revenues', 'q', '41,096', 'scale="6"'), ('Revenues', 'y', '75,000', 'scale="6"')])
+    [r] = parse_inline(html, NVDA, ('Q',))
+    assert (r['segment'], r['value'], r['period_start']) == ('Data Center', 41_096 * M, Q2[0])
+    assert parse_inline(html, NVDA) == []                                  # a 10-K parse still wants full years only
+
+
+def test_quarters_are_labelled_by_the_fiscal_calendar_and_the_later_10q_wins():
+    def piece(start, end, value):
+        return {'metric': 'revenue', 'concept': 'Revenues', 'axis': 'product', 'segment': 'Data Center',
+                'value': value * M, 'period_start': start, 'period_end': end}
+    facts = companyfacts(api(1, filed='2025-02-26'), api(1, end='2026-01-25', start='2025-01-27', filed='2026-02-25'),
+                         api(1, end=Q2[1], start=Q2[0], filed='2025-08-27', form='10-Q'),
+                         api(1, end='2026-07-26', start='2026-04-27', filed='2026-08-26', form='10-Q'))
+    parsed = {Q2[1]: [piece(*Q2, 100)],
+              '2026-07-26': [piece('2026-04-27', '2026-07-26', 130), piece(*Q2, 105)]}   # the comparison is restated
+    rows = normalize_segments(parsed, facts, 'NVDA', '10-Q')
+    got = {(r['fiscal_year'], r['fiscal_period']): (r['value'] / M, r['form'], r['accession']) for r in rows}
+    assert got == {(2026, 'Q2'): (105, '10-Q', 'acc-2026-08-26'), (2027, 'Q2'): (130, '10-Q', 'acc-2026-08-26')}

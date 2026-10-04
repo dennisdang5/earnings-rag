@@ -278,17 +278,22 @@ def available_metrics(ticker: str) -> list[str]:
                                            "AND segment = ''", (ticker,)).fetchall()}
     return [m for m in METRICS if m in have]
 
-def get_breakdown(ticker: str, metric: str, axis: str, fiscal_year: int | None = None, years: int = 2) -> list[dict]:
-    """Every slice on one axis, for the given fiscal year or the latest `years` years. Latest first, largest first."""
-    sql = f'SELECT {", ".join(FACT_COLUMNS)} FROM facts WHERE ticker = %s AND metric = %s AND axis = %s'
-    params: list = [ticker, metric, axis]
+def get_breakdown(ticker: str, metric: str, axis: str, fiscal_year: int | None = None, years: int = 2,
+                  fiscal_period: str = 'FY') -> list[dict]:
+    """
+    Every slice on one axis, for the given fiscal year or the latest `years` years. Latest first, largest first. Annual
+    (FY) by default: quarterly slices share the table, and mixing them into a year would double-count it.
+    """
+    sql = (f'SELECT {", ".join(FACT_COLUMNS)} FROM facts WHERE ticker = %s AND metric = %s AND axis = %s '
+           'AND fiscal_period = %s')
+    params: list = [ticker, metric, axis, fiscal_period]
     if fiscal_year is not None:
         sql += ' AND fiscal_year = %s'
         params.append(fiscal_year)
     else:
         sql += (' AND fiscal_year IN (SELECT DISTINCT fiscal_year FROM facts WHERE ticker = %s AND metric = %s'
-                ' AND axis = %s ORDER BY fiscal_year DESC LIMIT %s)')
-        params += [ticker, metric, axis, years]
+                ' AND axis = %s AND fiscal_period = %s ORDER BY fiscal_year DESC LIMIT %s)')
+        params += [ticker, metric, axis, fiscal_period, years]
     sql += ' ORDER BY fiscal_year DESC, value DESC'
     with connect() as conn:
         with conn.cursor() as cur:
@@ -303,7 +308,7 @@ def available_breakdowns(ticker: str, corporate: str) -> list[tuple[str, str, in
     with connect() as conn:
         return conn.execute(
             "SELECT metric, axis, min(fiscal_year), max(fiscal_year) FROM facts "
-            "WHERE ticker = %s AND axis <> '' GROUP BY metric, axis "
+            "WHERE ticker = %s AND axis <> '' AND fiscal_period = 'FY' GROUP BY metric, axis "
             "HAVING count(DISTINCT segment) FILTER (WHERE segment <> %s) >= 2 ORDER BY metric, axis",
             (ticker, corporate)).fetchall()
 
@@ -311,8 +316,9 @@ def breakdown_names(ticker: str, metric: str) -> dict[str, list[str]]:
     """axis -> the slice names in its latest year, largest first. Tells the model which axis a name like Data Center is on."""
     with connect() as conn:
         rows = conn.execute(
-            "SELECT axis, segment FROM facts f WHERE ticker = %s AND metric = %s AND axis <> '' AND fiscal_year = "
-            "(SELECT max(fiscal_year) FROM facts WHERE ticker = f.ticker AND metric = f.metric AND axis = f.axis) "
+            "SELECT axis, segment FROM facts f WHERE ticker = %s AND metric = %s AND axis <> '' AND fiscal_period = 'FY' AND fiscal_year = "
+            "(SELECT max(fiscal_year) FROM facts WHERE ticker = f.ticker AND metric = f.metric AND axis = f.axis "
+            "AND fiscal_period = 'FY') "
             "ORDER BY axis, value DESC", (ticker, metric)).fetchall()
     names: dict[str, list[str]] = {}
     for axis, segment in rows:
