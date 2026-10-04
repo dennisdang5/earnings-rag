@@ -134,9 +134,10 @@ def parse_filing(html: bytes, concepts: dict[str, str],
         if located is None or value is None:
             continue
         axis, member = located
+        raw = next((m for a, m in dims if a in AXES), '')  # 'aapl:IPhoneMember', for its label in the linkbase
         # the same fact is often printed twice (statement and note); the first reading is kept
         found.setdefault((metric, axis, member, start, end),
-                         {'metric': metric, 'concept': concept, 'axis': axis, 'segment': member,
+                         {'metric': metric, 'concept': concept, 'axis': axis, 'segment': member, 'member': raw,
                           'value': value, 'period_start': start, 'period_end': end})
 
     # NVIDIA's FY2026 10-K tags a second "corporate" operating income equal to the total of the operating segments
@@ -330,6 +331,53 @@ def add_corporate_remainder(rows: list[dict], consolidated: dict[tuple, dict],
     return out
 
 
+def choose_names(latest: dict[tuple, tuple[str, str]], labels: dict[str, dict]) -> dict[tuple, str]:
+    """
+    (axis, series key) -> display name. latest maps each series (keyed by member_name, which joins a member renamed
+    between years) to (filing, member) of the latest filing that uses it; labels maps a filing to its parse_labels
+    result. A series with no label keeps its key. If two series on one axis would get the same name, both keep their
+    keys: the name is part of the facts table's primary key, so a clash would merge two series.
+    """
+    from earnings_rag.labels import display_name
+
+    names = {}
+    for (axis, key), (filing, member) in latest.items():
+        name = display_name((labels.get(filing) or {}).get(member, {}))
+        if name and key != CORPORATE:
+            names[(axis, key)] = name
+    seen: dict[tuple, list[tuple]] = {}
+    for (axis, key), name in names.items():
+        seen.setdefault((axis, name.lower()), []).append((axis, key))
+    for clashing in (v for v in seen.values() if len(v) > 1):
+        for k in clashing:
+            names.pop(k)
+    return names
+
+
+def slice_names(ticker: str, companyfacts: dict, concepts: dict[str, str],
+                parsed: dict[str, dict[str, list[dict]]]) -> dict[tuple, str]:
+    """Fetch the label linkbase of the latest filing that uses each member (cached) and choose the names."""
+    from earnings_rag.labels import fetch_labels
+
+    latest: dict[tuple, tuple[str, str]] = {}   # (axis, key) -> (filing, member)
+    forms = {}
+    for form, by_date in parsed.items():
+        for report_date, rows in by_date.items():
+            forms[report_date] = form
+            for r in rows:
+                if r['axis'] and r.get('member') and latest.get((r['axis'], r['segment']), ('',))[0] <= report_date:
+                    latest[(r['axis'], r['segment'])] = (report_date, r['member'])
+    labels = {}
+    for report_date in sorted({f for f, _ in latest.values()}):
+        filing = _filing_for(companyfacts, concepts, report_date, forms[report_date])
+        if filing is not None:
+            labels[report_date] = fetch_labels(ticker, int(companyfacts['cik']), filing['accn'], report_date)
+    names = choose_names(latest, labels)
+    print(f'{ticker}: slice names from {len(labels)} label linkbases: {len(names)} of {len(latest)} slices named by '
+          f'the filing, the rest keep their member names')
+    return names
+
+
 def ingest_segments(ticker: str, companyfacts: dict) -> bool:
     """
     Parse the cached 10-Ks and 10-Qs, validate, store. Returns False (storing nothing) if the parser disagrees with the
@@ -384,6 +432,9 @@ def ingest_segments(ticker: str, companyfacts: dict) -> bool:
             print(f'  {label}: ' + '; '.join(outcomes[key]))
     for w in warnings:
         print(f'  {w}')
+    names = slice_names(ticker, companyfacts, concepts, parsed)
+    for r in rows + corporate:
+        r['segment'] = names.get((r['axis'], r['segment']), r['segment'])
     replace_segment_facts(ticker, rows + corporate)
     return True
 
