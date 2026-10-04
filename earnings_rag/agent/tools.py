@@ -179,7 +179,8 @@ CALCULATE = Tool(
     name='calculate',
     description=(
         'Exact arithmetic. Use it for every derived number (growth, margins, differences, ratios) '
-        'instead of computing in your head.'
+        'instead of computing in your head. Each result has an id (calc_1, calc_2, ...): cite it next to the number '
+        'it produced.'
     ),
     args_model=CalculateArgs,
     fn=calculate,
