@@ -300,6 +300,15 @@ def get_breakdown(ticker: str, metric: str, axis: str, fiscal_year: int | None =
             cur.execute(sql, params)
             return [dict(zip(FACT_COLUMNS, row)) for row in cur.fetchall()]
 
+def breakdown_quarters(ticker: str, metric: str, axis: str) -> tuple[str, str] | None:
+    """('Q1 FY2023', 'Q2 FY2027'): the first and last quarter a breakdown has slices for, or None."""
+    with connect() as conn:
+        rows = conn.execute(
+            "SELECT fiscal_year, fiscal_period FROM facts WHERE ticker = %s AND metric = %s AND axis = %s "
+            "AND fiscal_period IN ('Q1', 'Q2', 'Q3') GROUP BY fiscal_year, fiscal_period ORDER BY fiscal_year, fiscal_period",
+            (ticker, metric, axis)).fetchall()
+    return (f'{rows[0][1]} FY{rows[0][0]}', f'{rows[-1][1]} FY{rows[-1][0]}') if rows else None
+
 def available_breakdowns(ticker: str, corporate: str) -> list[tuple[str, str, int, int]]:
     """
     (metric, axis, first year, last year) for each breakdown with at least two real slices. A lone corporate row is

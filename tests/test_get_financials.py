@@ -115,13 +115,15 @@ NVDA_PRODUCTS = [seg('Data Center', 115_186), seg('Compute', 102_196), seg('Netw
 def call_breakdown(monkeypatch, rows=(), available=(('revenue', 'product', 2021, 2026),), names=(), **args):
     seen = {}
 
-    def fake_get_breakdown(ticker, metric, axis, fiscal_year, years):
-        seen.update(ticker=ticker, metric=metric, axis=axis, fiscal_year=fiscal_year, years=years)
+    def fake_get_breakdown(ticker, metric, axis, fiscal_year, years, fiscal_period='FY'):
+        seen.update(ticker=ticker, metric=metric, axis=axis, fiscal_year=fiscal_year, years=years,
+                    fiscal_period=fiscal_period)
         return list(rows)
 
     monkeypatch.setattr(tools_module, 'get_breakdown', fake_get_breakdown)
     monkeypatch.setattr(tools_module, 'available_breakdowns', lambda ticker, corporate: list(available))
     monkeypatch.setattr(tools_module, 'breakdown_names', lambda ticker, metric: dict(names))
+    monkeypatch.setattr(tools_module, 'breakdown_quarters', lambda ticker, metric, axis: ('Q1 FY2023', 'Q2 FY2027'))
     return json.loads(GET_FINANCIALS.call(json.dumps(args))), seen
 
 
@@ -135,7 +137,8 @@ def test_breakdown_ids_name_the_axis_and_the_slice():
 
 def test_breakdown_returns_every_slice_and_marks_overlapping_ones(monkeypatch):
     out, seen = call_breakdown(monkeypatch, NVDA_PRODUCTS, company='NVDA', metric='revenue', breakdown='product')
-    assert seen == {'ticker': 'NVDA', 'metric': 'revenue', 'axis': 'product', 'fiscal_year': None, 'years': 2}
+    assert seen == {'ticker': 'NVDA', 'metric': 'revenue', 'axis': 'product', 'fiscal_year': None, 'years': 2,
+                    'fiscal_period': 'FY'}
     part_of = {r['segment']: r.get('part_of') for r in out['results']}
     assert part_of == {'Data Center': None, 'Compute': 'Data Center', 'Networking': 'Data Center',
                        'Gaming': None, 'OEM and Other': None}
@@ -149,9 +152,25 @@ def test_breakdown_a_company_does_not_report_lists_what_it_has(monkeypatch):
     assert 'revenue by segment (FY2020-FY2025)' in out['error']
 
 
-def test_breakdowns_are_annual_only(monkeypatch):
-    out, _ = call_breakdown(monkeypatch, company='NVDA', metric='revenue', breakdown='product', period='Q4')
-    assert 'annual only' in out['error']
+def test_a_quarter_returns_that_quarters_slices_with_their_own_ids(monkeypatch):
+    rows = [row(axis='product', segment='Data Center', value=89_023e6, fiscal_year=2027, fiscal_period='Q2'),
+            row(axis='product', segment='Data Center', value=41_096e6, fiscal_year=2026, fiscal_period='Q2')]
+    out, seen = call_breakdown(monkeypatch, rows, company='NVDA', metric='revenue', breakdown='product', period='Q2')
+    assert (seen['fiscal_period'], seen['fiscal_year'], seen['years']) == ('Q2', None, 2)  # same quarter, two years
+    assert [r['id'] for r in out['results']] == ['NVDA_revenue_FY2027Q2_product_DataCenter',
+                                                 'NVDA_revenue_FY2026Q2_product_DataCenter']
+
+
+def test_q4_breakdown_is_an_error_that_explains_how_to_compute_it(monkeypatch):
+    out, seen = call_breakdown(monkeypatch, company='NVDA', metric='revenue', breakdown='product', period='Q4')
+    assert 'FY - Q1 - Q2 - Q3' in out['error'] and 'calculate' in out['error']
+    assert seen == {}  # nothing was read
+
+
+def test_empty_quarter_says_which_quarters_exist(monkeypatch):
+    out, _ = call_breakdown(monkeypatch, company='NVDA', metric='revenue', breakdown='product', fiscal_year=2027,
+                            period='Q3')
+    assert out['results'] == [] and 'Q1 FY2023 to Q2 FY2027' in out['note']
 
 
 def test_empty_breakdown_says_which_years_exist(monkeypatch):

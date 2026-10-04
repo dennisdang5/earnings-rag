@@ -9,6 +9,7 @@ from earnings_rag.calc import evaluate
 from earnings_rag.pipeline import retrieve
 from earnings_rag.segments import CORPORATE, find_parts
 from earnings_rag.store import (get_facts, fact_years, get_breakdown, available_breakdowns, breakdown_names, available_metrics,
+                                breakdown_quarters,
                                 text_periods)
 from earnings_rag.xbrl import METRICS
 
@@ -203,7 +204,9 @@ class GetFinancialsArgs(BaseModel):
             'Services). segment: the reporting segments, which are regions for some companies (e.g. Compute and '
             "Networking; Apple's Americas, Europe, Greater China; Credit Card). geography: revenue by country, "
             'usually a few named countries plus an "Other Countries" remainder that is not a region. Returns every '
-            'slice for the year (the latest two years if fiscal_year is omitted). Annual only.'))
+            'slice for the year (the latest two years if fiscal_year is omitted). Annual by default; period Q1-Q3 gives '
+            'that quarter\'s slices (the same quarter of the latest two years if fiscal_year is omitted). There are no '
+            'Q4 slices.'))
 
 
 def fact_result(row: dict) -> dict:
@@ -236,16 +239,25 @@ def fact_result(row: dict) -> dict:
 
 
 def get_breakdown_result(args: GetFinancialsArgs) -> dict:
-    if args.period not in (None, 'FY'):
-        return {'error': 'Breakdowns are annual only for now: omit period or use FY.'}
+    if args.period == 'Q4':
+        # No 10-Q covers Q4 and none is stored (user's decision): a derived slice would mix two filings
+        return {'error': 'No quarterly report covers Q4, so there is no Q4 breakdown. Q4 = FY - Q1 - Q2 - Q3: get this '
+                         'breakdown for period FY and for each of Q1, Q2 and Q3 of the same fiscal year, then use '
+                         'calculate, and say in the answer that the Q4 figure is computed.'}
+    fiscal_period = args.period or 'FY'
     available = available_breakdowns(args.company, CORPORATE)
     if (args.metric, args.breakdown) not in {(m, a) for m, a, _, _ in available}:
         listed = '; '.join(f'{m} by {a} (FY{lo}-FY{hi})' for m, a, lo, hi in available) or 'none'
         return {'error': f'{args.company} does not report {args.metric} by {args.breakdown}. '
                          f'Breakdowns available for {args.company}: {listed}'}
 
-    rows = get_breakdown(args.company, args.metric, args.breakdown, args.fiscal_year, BREAKDOWN_YEARS)
+    rows = get_breakdown(args.company, args.metric, args.breakdown, args.fiscal_year, BREAKDOWN_YEARS,
+                         fiscal_period=fiscal_period)
     if not rows:
+        if fiscal_period != 'FY':
+            span = breakdown_quarters(args.company, args.metric, args.breakdown)
+            covered = f'quarters {span[0]} to {span[1]}' if span else 'no quarters'
+            return {'results': [], 'note': f'No matching data. This breakdown is available for {covered}.'}
         lo, hi = next((lo, hi) for m, a, lo, hi in available if (m, a) == (args.metric, args.breakdown))
         return {'results': [], 'note': f'No matching data. This breakdown is available for fiscal years {lo}-{hi}.'}
     parts = find_parts(rows)
