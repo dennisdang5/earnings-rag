@@ -322,3 +322,23 @@ def test_parse_filing_returns_only_items_tagged_on_the_corporate_member_alone():
                   ('UnallocatedCorporateOperatingExpenditures', 'q', '612', 'scale="6" unitRef="usd"')])
     _, items = segments.parse_filing(html, NVDA)
     assert [(i['concept'], i['value']) for i in items] == [('AllocatedShareBasedCompensationExpense', 6_386 * M)]
+
+
+def _instant(html, day):
+    return html.replace(f'<xbrli:startDate>{day}</xbrli:startDate><xbrli:endDate>{day}</xbrli:endDate>'.encode(),
+                        f'<xbrli:instant>{day}</xbrli:instant>'.encode())
+
+
+def test_a_10q_reads_balances_at_its_quarter_ends_and_not_at_other_dates():
+    segment = [(ITEMS, 'us-gaap:OperatingSegmentsMember'), (SEGMENT, 'cof:ConsumerBankingSegmentMember')]
+    q, prior = ('2026-04-01', '2026-06-30'), ('2025-04-01', '2025-06-30')
+    html = ixbrl({'q': (*q, []), 'p': (*prior, []),
+                  'now': ('2026-06-30', '2026-06-30', segment), 'then': ('2025-06-30', '2025-06-30', segment),
+                  'other': ('2026-03-31', '2026-03-31', segment)},
+                 [('Deposits', 'now', '435,221', 'scale="6"'), ('Deposits', 'then', '414,044', 'scale="6"'),
+                  ('Deposits', 'other', '1', 'scale="6"')])
+    for day in ('2026-06-30', '2025-06-30', '2026-03-31'):
+        html = _instant(html, day)
+    got = {r['period_end']: r['value'] for r in parse_inline(html, COF, ('Q',))}
+    assert got == {'2026-06-30': 435_221 * M, '2025-06-30': 414_044 * M}
+    assert parse_inline(html, COF) == []        # a 10-K parse has no full-year duration here, so reads no balance

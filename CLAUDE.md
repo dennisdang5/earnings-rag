@@ -73,10 +73,11 @@ python eval/run_eval.py --refusals                  # generation check, calls th
 - (Done: `agent/quarterly-eval-ci`, quarterly retrieval under its own CI recall gate; see `DECISIONS.md`.)
 - (Done: `agent/quarterly-segments`, quarterly slices stored from the 10-Qs, ingest only.)
 - (Done: `agent/breakdown-period`, `period` on `get_financials(breakdown=...)`; `agent/calc-citations`, calc ids for computed numbers and the unsupported-figure check; `agent/segment-corporate-items`; `agent/segment-labels` (PRs #15-#20, merged 2026-10-04); see `DECISIONS.md`.)
-- **Next:** the last segment item under known issues (segment balances from 10-Qs, probe first), then `compare`, the agent eval, and `/agent/stream` plus UI.
-- Then: quarterly segment figures from the cached 10-Q HTML, `compare`, the agent eval, and `/agent/stream` plus UI. The UI design note must include a "how this was computed" panel (tool results with source/derived/as_reported/notes, fact-id citations that open, citation-check flags, and ingest decisions such as SKIPPED/STALE, which would need to be persisted).
+- (Done: `agent/segment-balances-10q`, quarterly segment loans and deposits.)
+- **Next:** the design note for `compare`, the agent eval, and `/agent/stream` plus UI.
+- The UI design note must include a "how this was computed" panel (tool results with source/derived/as_reported/notes, fact-id citations that open, citation-check flags, and ingest decisions such as SKIPPED/STALE, which would need to be persisted).
 
-**Pick up here (left off the night of 2026-10-04).** `main` is clean and green in CI (PR #20 merged, 261 tests, recall@5 0.864 10-K and 0.875 quarterly); no branch is open. Next is **segment balances from 10-Qs** (known issues, segment item 3): start by probing whether Capital One tags loans or deposits by segment in its 10-Qs (`parse_filing` reads balances only on a fiscal year end, which a 10-Q lacks). If it does, a short design note for the user, then the fix; if not, record that and close the item. After that, the design note for `compare`.
+**Pick up here (updated 2026-10-04).** Branch `agent/segment-balances-10q` is open (PR pending, 263 tests); `main` is at PR #20. After it merges, the next step is the design note for `compare` (companies or periods; only kept if the agent eval shows it helps), then the agent eval, then `/agent/stream` plus UI.
 - *Done this session (2026-10-03/04), all merged:* #15 quarterly eval in CI, #16 quarterly segment figures, #17 `period` on breakdowns, #18 calc ids and the unsupported-figure check (shows CLOSED on GitHub because its base branch was deleted first; the code is on `main`), #19 corporate operating income from tagged items, #20 slice names from the label linkbase. Live checks for each are in `DECISIONS.md`.
 - *Open findings from this session:* first drafts put all citations at the end of a paragraph, so growth and Q4 questions still take one revision (about 4-6k input tokens); an answer does not say a corporate line is derived (Apple FY2022) although the tool result does, which belongs in the "how this was computed" panel; NVIDIA geography stores "Other Countries" and "All Other Countries Not Separately Disclosed" as two series.
 - *Stacked PRs:* retarget the child PR to `main` (`gh pr edit <n> --base main`) before deleting the parent branch, or GitHub closes it unmerged.
@@ -100,7 +101,7 @@ python eval/run_eval.py --refusals                  # generation check, calls th
 - Segment issues found in `agent/quarterly-segments`, with proposed fixes (suggested order, each its own small PR, after `period` on `get_financials`):
   1. (Done: `agent/segment-corporate-items`. NVIDIA's corporate operating income now comes from its tagged items; Apple's pre-FY2025 rows stay derived because R&D is not tagged on the corporate member.)
   2. (Done: `agent/segment-labels`, names from the label linkbase. Still open: NVIDIA geography stores "Other Countries" and "All Other Countries Not Separately Disclosed" as two series, two member ids for what looks like one bucket; labels differ too, so merging needs evidence such as one replacing the other with equal values in an overlap year.)
-  3. *Segment balances from 10-Qs*: `parse_inline` accepts a balance only on a fiscal year end, which a 10-Q lacks, so quarterly loans/deposits by segment are skipped. Fix: also accept instants on the end date of a three-month duration in the filing. Probe first whether COF tags loans or deposits by segment in its 10-Qs at all; skip if not.
+  3. (Done: `agent/segment-balances-10q`. A balance is read on the end of any duration of the kept length in the filing, so COF's quarterly loans and deposits by segment are stored; a Q4 balance breakdown points to FY.)
 
 ## Working agreement
 
