@@ -240,6 +240,9 @@ def fact_result(row: dict) -> dict:
 
 
 def get_breakdown_result(args: GetFinancialsArgs) -> dict:
+    if args.period == 'Q4' and METRICS[args.metric].get('balance'):
+        return {'error': f'{args.metric} is a balance on a date: the fiscal year end is period FY, '
+                         f'and Q1-Q3 are the quarter ends. It cannot be derived as FY - Q1 - Q2 - Q3.'}
     if args.period == 'Q4':
         # No 10-Q covers Q4 and none is stored (user's decision): a derived slice would mix two filings
         return {'error': 'No quarterly report covers Q4, so there is no Q4 breakdown. Q4 = FY - Q1 - Q2 - Q3: get this '

@@ -219,3 +219,9 @@ def test_metric_availability_comes_from_what_was_stored(monkeypatch):
     monkeypatch.setattr(tools_module, 'available_metrics', lambda ticker: ['revenue', 'deposits'])
     out = json.loads(GET_FINANCIALS.call(json.dumps({'company': 'COF', 'metric': 'gross_profit'})))
     assert 'COF does not report gross_profit' in out['error'] and 'revenue, deposits' in out['error']
+
+
+def test_q4_breakdown_of_a_balance_points_to_the_year_end_not_a_subtraction(monkeypatch):
+    out, seen = call_breakdown(monkeypatch, available=(('loans', 'segment', 2023, 2026),),
+                               company='COF', metric='loans', breakdown='segment', period='Q4')
+    assert 'FY - Q1' in out['error'] and 'cannot be derived' in out['error'] and not seen

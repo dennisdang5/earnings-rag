@@ -88,7 +88,8 @@ def parse_filing(html: bytes, concepts: dict[str, str],
 
     durations: the period lengths to keep, as xbrl._classify names them. A 10-Q passes ('Q',): its three-month figures
     are read directly, and the six- and nine-month year-to-date ones are dropped (a quarter is never derived from them).
-    A 10-Q has no full-year duration, so no fiscal year end is found and balances are not read from it.
+    Balances (loans, deposits) are read on the end date of a period of a kept length in the same filing: a fiscal year
+    end in a 10-K, a quarter end (and last year's, the comparison) in a 10-Q.
 
     Also returns the dollar items tagged on the corporate member alone (ConsolidationItemsAxis=CorporateNonSegmentMember,
     nothing else): stock compensation, unallocated expenses, acquisition costs, but also interest and other non-operating
@@ -108,10 +109,11 @@ def parse_filing(html: bytes, concepts: dict[str, str],
         elif start is not None and end is not None:
             contexts[c['id']] = (dims, start.get_text(strip=True), end.get_text(strip=True))
 
-    # A balance (loans, deposits) is read only at a fiscal year end, which a full-year duration in the same filing
-    # identifies; other dates in the notes (a debt maturity, a mid-year snapshot) are not fiscal-year figures.
-    year_ends = {end for _, start, end in contexts.values()
-                 if start is not None and _classify((date.fromisoformat(end) - date.fromisoformat(start)).days) == 'FY'}
+    # A balance (loans, deposits) is read only on a period end of the kept length, which a duration in the same filing
+    # identifies; other dates in the notes (a debt maturity, a mid-year snapshot) are not period-end figures.
+    period_ends = {end for _, start, end in contexts.values()
+                   if start is not None
+                   and _classify((date.fromisoformat(end) - date.fromisoformat(start)).days) in durations}
 
     # one concept per metric, the one the company uses (resolver.primary): reading a smaller look-alike concept as well
     # would collide with it on the same slice
@@ -124,7 +126,7 @@ def parse_filing(html: bytes, concepts: dict[str, str],
         metric = concept_metric[concept]
         dims, start, end = contexts[tag['contextRef']]
         if METRICS[metric].get('balance'):
-            if start is not None or end not in year_ends:
+            if start is not None or end not in period_ends:
                 continue
             start = end  # a balance has no start; stored as a one-day period like the consolidated balance rows
         elif start is None or _classify((date.fromisoformat(end) - date.fromisoformat(start)).days) not in durations:
