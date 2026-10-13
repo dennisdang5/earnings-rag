@@ -16,7 +16,7 @@ from earnings_rag.agent.loop import AgentResult, run_agent
 REFUSAL = 'The provided filings do not address this.'
 NOT_AVAILABLE = re.compile(r'not (?:yet )?(?:available|been filed|filed)|no (?:such )?(?:filing|10-[KQ])|'
                            r'does not (?:yet )?exist|has not (?:yet )?been', re.IGNORECASE)
-FLAGS = ('uncited', 'unknown_ids', 'unsupported', 'unacknowledged_missing')
+FLAGS = ('uncited', 'unknown_ids', 'unsupported', 'unacknowledged_missing', 'slice_mismatch')
 
 
 def to_record(question: dict, run: int, result: AgentResult) -> dict:
@@ -65,7 +65,7 @@ def score_run(expect: dict, record: dict) -> dict[str, bool]:
     nothing in the final answer) and `complete` (the answer was not cut off at max tokens).
     """
     answer = record['answer']
-    checks = {'flags': not any(record[k] for k in FLAGS), 'complete': not record['cut_off']}
+    checks = {'flags': not any(record.get(k) for k in FLAGS), 'complete': not record['cut_off']}
 
     if 'contains' in expect:   # every entry must appear; an entry that is a list is any-of (formatting variants)
         checks['contains'] = all(any(s in answer for s in ([e] if isinstance(e, str) else e)) for e in expect['contains'])

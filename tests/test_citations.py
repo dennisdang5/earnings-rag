@@ -20,7 +20,7 @@ def test_figures_with_a_marker_are_flagged_when_uncited():
 
 
 def test_a_cited_figure_passes():
-    assert check('Revenue was $130.5 billion [NVDA_revenue_FY2025].') == {'uncited': [], 'unknown_ids': [], 'unsupported': []}
+    assert check('Revenue was $130.5 billion [NVDA_revenue_FY2025].') == {'uncited': [], 'unknown_ids': [], 'unsupported': [], 'slice_mismatch': []}
 
 
 def test_years_list_markers_ids_and_product_numbers_are_not_figures():
@@ -44,7 +44,7 @@ def test_decimal_points_do_not_split_a_sentence():
 
 def test_a_comma_separated_bracket_counts_as_citations():
     out = check('Revenue rose 114% [NVDA_revenue_FY2024, NVDA_revenue_FY2025].')
-    assert out == {'uncited': [], 'unknown_ids': [], 'unsupported': []}
+    assert out == {'uncited': [], 'unknown_ids': [], 'unsupported': [], 'slice_mismatch': []}
 
 
 def test_markdown_list_items_are_checked_separately():
@@ -59,7 +59,7 @@ def test_an_id_no_tool_returned_is_flagged():
 
 
 def test_the_refusal_sentence_is_fine():
-    assert check('The provided filings do not address this.') == {'uncited': [], 'unknown_ids': [], 'unsupported': []}
+    assert check('The provided filings do not address this.') == {'uncited': [], 'unknown_ids': [], 'unsupported': [], 'slice_mismatch': []}
 
 
 def test_each_problem_gets_its_own_fix_in_the_revision_request():
@@ -183,3 +183,87 @@ def test_calculate_results_get_ids_the_answer_can_cite():
     record_numbers('{"results": [{"id": "A", "value": 5, "as_reported": 50}]}', values, computed)
     assert values == {'A': [5, 50]}
     assert record_numbers('{"error": "bad"}', values, computed) == '{"error": "bad"}'
+
+
+# --- slice mismatch: a company-wide fact cited for a product, segment or region -----
+
+SLICE_NAMES = {'AAPL': {'iPhone': 'product', 'Services': 'product', 'Other': 'segment', 'Corporate and other': 'segment'},
+               'NVDA': {'Data Center': 'product'}}
+SLICE_VALUES = {'AAPL_revenue_FY2026Q3': [109417], 'AAPL_revenue_FY2026Q3_product_IPhone': [54252],
+          'NVDA_revenue_FY2025': [130497]}
+
+
+def mismatches(text):
+    return check_citations(text, set(SLICE_VALUES), SLICE_VALUES, None, SLICE_NAMES)['slice_mismatch']
+
+
+def test_a_company_wide_fact_cited_for_a_named_slice_is_flagged():
+    text = "Apple's iPhone revenue was $109,417 million [AAPL_revenue_FY2026Q3]."
+    call = 'get_financials(company=AAPL, metric=revenue, fiscal_year=2026, period=Q3, breakdown=product)'
+    assert mismatches(text) == [('iPhone', text, [call])]
+
+
+def test_a_slice_fact_in_the_sentence_passes_even_beside_the_total():
+    assert mismatches("iPhone was $54,252 million [AAPL_revenue_FY2026Q3_product_IPhone] of $109,417 million "
+                  "[AAPL_revenue_FY2026Q3].") == []
+
+
+def test_the_slice_must_belong_to_the_company_of_the_cited_fact():
+    assert mismatches('Data Center is a market NVIDIA reports; Apple revenue was $109,417 million [AAPL_revenue_FY2026Q3].') == []
+    assert mismatches('Data Center revenue was $130,497 million [NVDA_revenue_FY2025].') != []
+
+
+def test_generic_names_and_sentences_without_facts_are_ignored():
+    assert mismatches('Other revenue was $109,417 million [AAPL_revenue_FY2026Q3].') == []
+    assert mismatches('The iPhone is sold worldwide [AAPL_2025-09-27_0005].') == []
+    assert mismatches('The iPhone is sold worldwide.') == []
+
+
+def test_the_check_is_off_without_slice_names():
+    assert check_citations('iPhone was $109,417 million [AAPL_revenue_FY2026Q3].', set(SLICE_VALUES), SLICE_VALUES)['slice_mismatch'] == []
+
+
+def test_the_revision_request_tells_the_model_to_set_breakdown():
+    text = revision_request({'uncited': [], 'unknown_ids': [], 'unsupported': [], 'unacknowledged_missing': [],
+                             'slice_mismatch': [('iPhone', 'iPhone was $109,417 million.', ['get_financials(company=AAPL, breakdown=product)'])]})
+    assert 'iPhone in: iPhone was $109,417 million.' in text and '- get_financials(company=AAPL, breakdown=product)' in text
+
+
+def test_the_loop_sends_a_total_cited_as_a_slice_back_once():
+    total = Tool('get', 'Fake facts.', Args, lambda a: {'results': [{'id': 'AAPL_revenue_FY2026Q3', 'value': 109417}]})
+    client = FakeClient(
+        tool_request('get', '{"text": "x"}'),
+        answer('iPhone revenue was $109,417 million [AAPL_revenue_FY2026Q3].'),
+        answer('Apple revenue was $109,417 million [AAPL_revenue_FY2026Q3].'),
+    )
+    result = run_agent('q', client, tools=[total], slices=SLICE_NAMES)
+    assert result.revised and result.slice_mismatch == []
+    assert 'breakdown' in client.requests[2]['messages'][-1]['content']
+
+
+def test_a_slice_revision_must_call_a_tool_but_other_revisions_need_not():
+    total = Tool('get', 'Fake facts.', Args, lambda a: {'results': [{'id': 'AAPL_revenue_FY2026Q3', 'value': 109417}]})
+    client = FakeClient(tool_request('get', '{"text": "x"}'),
+                        answer('iPhone revenue was $109,417 million [AAPL_revenue_FY2026Q3].'),
+                        tool_request('get', '{"text": "y"}', 'call_2'),
+                        answer('Apple revenue was $109,417 million [AAPL_revenue_FY2026Q3].'))
+    run_agent('q', client, tools=[total], slices=SLICE_NAMES)
+    assert [r.get('tool_choice') for r in client.requests] == [None, None, 'required', None]
+
+    client = FakeClient(tool_request('get', '{"text": "x"}'), answer('Revenue was $130.5 billion.'),
+                        answer('Revenue was $130.5 billion [NVDA_revenue_FY2025].'))
+    run_agent('q', client, tools=[FACTS])
+    assert all('tool_choice' not in r for r in client.requests)
+
+
+def test_a_draft_with_no_citations_is_judged_by_the_facts_the_run_fetched():
+    totals = {'AAPL_revenue_FY2026Q3': [109417], 'AAPL_revenue_FY2025Q3': [94036]}
+    text = "Apple's iPhone revenue was $109,417 million."
+    [(name, sentence, calls)] = check_citations(text, set(totals), totals, None, SLICE_NAMES)['slice_mismatch']
+    assert (name, sentence) == ('iPhone', text)
+    assert calls[0].endswith('fiscal_year=2026, period=Q3, breakdown=product)') and len(calls) == 2
+    # once the slice was fetched in the run, or when nothing was fetched, or without a figure: not flagged
+    fetched = totals | {'AAPL_revenue_FY2026Q3_product_IPhone': [54252]}
+    assert check_citations(text, set(fetched), fetched, None, SLICE_NAMES)['slice_mismatch'] == []
+    assert check_citations(text, set(), {}, None, SLICE_NAMES)['slice_mismatch'] == []
+    assert check_citations('The iPhone is sold worldwide.', set(totals), totals, None, SLICE_NAMES)['slice_mismatch'] == []

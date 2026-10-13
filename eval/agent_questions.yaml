@@ -115,8 +115,9 @@
 - id: aapl-iphone-q3-yoy
   question: "How did Apple's iPhone revenue in Q3 FY2026 compare with Q3 FY2025?"
   expect:
-    contains: ['21.69%']
+    contains: [['21.69%', '21.7%']]   # the iPhone slice (+21.69%); total revenue would give 16.36%
     min_calls: {calculate: 1}
+    not_contains: ['16.36%']
 
 - id: nvda-aapl-net-income-fy2025
   question: "Compare NVIDIA's and Apple's net income in fiscal 2025."

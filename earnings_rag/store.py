@@ -334,6 +334,15 @@ def breakdown_names(ticker: str, metric: str) -> dict[str, list[str]]:
         names.setdefault(axis, []).append(segment)
     return names
 
+def slice_names() -> dict[str, dict[str, str]]:
+    """ticker -> {slice name: axis} for every product, segment or geography slice stored (any year or period)."""
+    with connect() as conn:
+        rows = conn.execute("SELECT DISTINCT ticker, segment, axis FROM facts WHERE axis <> '' ORDER BY axis").fetchall()
+    names: dict[str, dict[str, str]] = {}
+    for ticker, segment, axis in rows:
+        names.setdefault(ticker, {}).setdefault(segment, axis)   # a name on two axes keeps the first (alphabetical)
+    return names
+
 def init_schema() -> None:
     with connect() as conn:
         conn.execute(SCHEMA_SQL)

@@ -6,7 +6,7 @@ from earnings_rag.agent.citations import check_citations, check_missing_filings,
 from earnings_rag.agent.tools import Tool, DEFAULT_TOOLS
 from earnings_rag.config import settings
 from earnings_rag.periods import period_note, resolve_periods
-from earnings_rag.store import text_periods
+from earnings_rag.store import slice_names, text_periods
 
 SYSTEM_PROMPT = """You are a financial research assistant with tools for searching SEC 10-K (annual) and 10-Q (quarterly) filings.
 
@@ -63,6 +63,7 @@ class AgentResult:
     unknown_ids: list[str] = field(default_factory=list)   # cited ids in the final answer that no tool returned
     unsupported: list[tuple] = field(default_factory=list)  # (figure, sentence): no fact or calc cited in it states it
     unacknowledged_missing: list[str] = field(default_factory=list)  # requested filings found missing, answer silent
+    slice_mismatch: list[tuple] = field(default_factory=list)        # (slice, sentence, calls): company-wide fact cited for a slice
     resolved_periods: list[dict] = field(default_factory=list)       # relative periods resolved in code (periods.py)
 
     @property
@@ -142,7 +143,8 @@ def missing_filing(result: str) -> dict | None:
 
 def run_agent(question: str, client, tools: list[Tool] | None = None,
               max_steps: int | None = None, model: str | None = None, context: str | None = None,
-              filings: list[dict] | None = None, today: date | None = None) -> AgentResult:
+              filings: list[dict] | None = None, today: date | None = None,
+              slices: dict[str, dict[str, str]] | None = None) -> AgentResult:
     """
     The whole agent: call the model; if it asks for tools, run them, append the results, and call it again.
     Stops when the model answers without asking for a tool, or when the step budget is spent.
@@ -150,9 +152,10 @@ def run_agent(question: str, client, tools: list[Tool] | None = None,
     `client` is anything with the OpenAI `chat.completions.create` interface, so tests can pass a scripted fake.
     `context` is appended to the system prompt; None builds date_context, '' adds nothing. Relative periods in the
     question are resolved in code and noted beside it (periods.py). `filings` (text_periods() rows, default: the
-    database) and `today` are parameters so tests can fix them.
+    database), `slices` (slice_names(), same) and `today` are parameters so tests can fix them.
     """
     filings = text_periods() if filings is None else filings
+    slices = slice_names() if slices is None else slices
     today = today or date.today()
     if context is None:
         context = date_context(today, filings)
@@ -176,9 +179,10 @@ def run_agent(question: str, client, tools: list[Tool] | None = None,
     values: dict[str, list[float]] = {}   # fact id -> the numbers it states
     computed: dict[str, float] = {}       # calc id -> result
     revised = False
+    force_tool = False   # the revision turn must call a tool when it was sent back for a slice
 
     def check(answer: str) -> dict:
-        return {**check_citations(answer, seen_ids, values, computed),
+        return {**check_citations(answer, seen_ids, values, computed, slices),
                 'unacknowledged_missing': check_missing_filings(answer, asked, missing)}
 
     def call_model(**extra):
@@ -192,7 +196,8 @@ def run_agent(question: str, client, tools: list[Tool] | None = None,
         return choice
 
     for step in range(1, max_steps + 1):
-        choice = call_model()
+        choice = call_model(tool_choice='required') if force_tool else call_model()
+        force_tool = False
         msg = choice.message
 
         if not msg.tool_calls:
@@ -201,6 +206,8 @@ def run_agent(question: str, client, tools: list[Tool] | None = None,
                 # one revision turn for every problem, tools still allowed so it can fetch a missing fact; a second
                 # failure is accepted
                 revised = True
+                # told to fetch the slice, 2 of 2 runs reworded the same total instead (agent/slice-check), so require it
+                force_tool = bool(problems.get('slice_mismatch'))
                 messages.append({'role': 'assistant', 'content': msg.content})
                 messages.append({'role': 'user', 'content': revision_request(problems)})
                 continue
