@@ -8,7 +8,7 @@ from earnings_rag.agent_eval import (args_match, format_table, load_records, run
                                      REFUSAL)
 from earnings_rag.config import REPO_ROOT
 from earnings_rag.questions import load_questions
-from tests.fakes import FakeClient, answer, tool_request
+from fakes import FakeClient, answer, tool_request
 
 
 def record(**over) -> dict:
