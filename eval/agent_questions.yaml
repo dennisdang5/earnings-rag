@@ -1,0 +1,159 @@
+# Agent eval questions (run with eval/run_agent_eval.py, score with eval/score_agent_eval.py).
+# expect keys: contains (every entry must appear; a list entry is any-of, for formatting variants), not_contains,
+# refusal, not_available_first, searched (each entry must match some search_filings call; a list value is any-of),
+# first_search, min_calls / max_calls ({tool: n}). Every run is also checked for clean citation flags and for not
+# being cut off at max tokens. as_of fixes today's date for relative-period questions. known_issue marks a failure
+# already listed in CLAUDE.md, so the report separates it from a regression.
+
+# --- search behaviour ---
+- id: frame-rates
+  question: 'How does NVIDIA use AI to improve frame rates in games?'
+  expect:
+    min_calls: {search_filings: 1}
+    refusal: false
+
+- id: tesla-risks
+  question: "What are Tesla's main risk factors?"
+  expect:
+    refusal: true
+    max_calls: {search_filings: 0}
+  known_issue: 'sometimes still searches once before refusing'
+
+- id: nvda-export-controls-annual
+  question: "How do export controls affect NVIDIA's business?"
+  expect:
+    min_calls: {search_filings: 1}
+    max_calls: {search_filings: 1}
+
+# --- quarterly filings ---
+- id: nvda-export-controls-latest-q
+  question: "What does NVIDIA's most recent quarterly report say about export controls?"
+  as_of: '2026-10-08'
+  expect:
+    contains: [['Q2 FY2027', 'second quarter of fiscal 2027']]
+
+- id: aapl-tariffs-latest-q
+  question: "What does Apple's latest 10-Q say about tariffs?"
+  as_of: '2026-10-08'
+  expect:
+    contains: [['Q3 FY2026', 'third quarter of fiscal 2026']]
+
+- id: aapl-tariffs-yoy
+  question: "How did Apple's discussion of tariffs change between its Q3 FY2026 and Q3 FY2025 10-Qs?"
+  expect:
+    min_calls: {search_filings: 2}
+
+- id: nvda-last-quarter-dc
+  question: 'What did NVIDIA report last quarter about data center demand?'
+  as_of: '2026-10-08'
+  expect:
+    contains: [['Q2 FY2027', 'second quarter of fiscal 2027']]
+  known_issue: 'sent back every run with unsupported passage figures, ~18k input tokens'
+
+# --- filings that do not exist ---
+- id: nvda-q2-fy2030
+  question: "What does NVIDIA's 10-Q for Q2 fiscal 2030 say about export controls?"
+  as_of: '2026-10-08'
+  expect:
+    not_available_first: true
+
+- id: aapl-fy2031-10k
+  question: "What does Apple's fiscal 2031 10-K say about competition?"
+  as_of: '2026-10-08'
+  expect:
+    not_available_first: true
+
+- id: nvda-q2-next-fy
+  question: "What does NVIDIA's 10-Q for Q2 of next fiscal year say about supply?"
+  as_of: '2026-10-08'
+  expect:
+    not_available_first: true
+
+- id: aapl-last-quarter
+  question: "What did Apple's last quarterly report say about services?"
+  as_of: '2026-10-08'
+  expect:
+    contains: [['Q3 FY2026', 'third quarter of fiscal 2026']]
+
+- id: aapl-10q-year-ago
+  question: "What did Apple's 10-Q from a year ago say about tariffs?"
+  as_of: '2026-10-08'
+  expect:
+    contains: [['Q1 FY2026', 'first quarter of fiscal 2026']]
+
+- id: cof-annual-report-this-year
+  question: "What does Capital One's annual report this year say about credit risk?"
+  as_of: '2026-10-08'
+  expect:
+    first_search: {company: COF, fiscal_year: 2025}
+  known_issue: 'searches FY2026 first, then FY2025 after a revision'
+
+# --- numbers ---
+- id: aapl-gross-margin-fy2024
+  question: "What was Apple's gross margin in fiscal 2024?"
+  expect:
+    contains: ['46.21%']
+    min_calls: {calculate: 1}
+  known_issue: 'states 46.2% (the model rounds the ratio)'
+
+- id: nvda-dc-growth-fy2025
+  question: "How much did NVIDIA's Data Center revenue grow in fiscal 2025?"
+  expect:
+    contains: ['142.37%']
+
+- id: cof-gross-profit-2024
+  question: "What was Capital One's gross profit in 2024?"
+  expect:
+    contains: [['does not report']]
+
+- id: nvda-eps-fy2025
+  question: "What was NVIDIA's diluted EPS in fiscal 2025?"
+  expect:
+    contains: ['$2.94']
+
+# --- comparisons answered by chaining get_financials and calculate ---
+- id: aapl-iphone-q3-yoy
+  question: "How did Apple's iPhone revenue in Q3 FY2026 compare with Q3 FY2025?"
+  expect:
+    contains: ['21.69%']
+    min_calls: {calculate: 1}
+
+- id: nvda-aapl-net-income-fy2025
+  question: "Compare NVIDIA's and Apple's net income in fiscal 2025."
+  expect:
+    contains:
+      - ['72,880', '72.88 billion', '72.9 billion']
+      - ['112,010', '112.01 billion', '112.0 billion', '112 billion']
+
+- id: net-income-latest-fy-all
+  question: 'What was the net income of NVIDIA, Apple and Capital One in their latest fiscal year?'
+  as_of: '2026-10-08'
+  expect:
+    contains:
+      - ['120,067', '120.07 billion', '120.1 billion']
+      - ['112,010', '112.01 billion', '112.0 billion', '112 billion']
+      - ['2,453', '2.45 billion', '2.5 billion']
+
+- id: nvda-revenue-fy2022-2025
+  question: "What was NVIDIA's revenue each year from fiscal 2022 to fiscal 2025?"
+  expect:
+    contains:
+      - ['26,914', '26.91 billion', '26.9 billion']
+      - ['26,974', '26.97 billion', '27.0 billion', '27 billion']
+      - ['60,922', '60.92 billion', '60.9 billion']
+      - ['130,497', '130.50 billion', '130.5 billion']
+
+- id: nvda-aapl-gross-margin-fy2025
+  question: "Compare NVIDIA's and Apple's gross margin in fiscal 2025."
+  expect:
+    contains:
+      - ['74.99%', '75.0%', '75%']
+      - ['46.91%', '46.9%']
+    min_calls: {calculate: 1}
+
+# --- known answer drift ---
+- id: aapl-cof-competition
+  question: 'How do Apple and Capital One each describe their competition risks?'
+  expect:
+    min_calls: {search_filings: 2}
+  known_issue: 'hits agent_max_tokens (500) and is cut off; lists IP and ESG items as competition risks'
