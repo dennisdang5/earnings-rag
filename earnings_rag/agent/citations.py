@@ -71,24 +71,79 @@ def unsupported_figures(sentence: str, ids: list[str], values: dict[str, list[fl
     return bad
 
 
+SLICED_ID = re.compile(r'_FY\d{4}(?:Q\d)?_(?:product|segment|geography)_')   # NVDA_revenue_FY2025_product_DataCenter
+# names too generic to show that a sentence is about a slice ("Other" appears in almost every breakdown)
+GENERIC_SLICES = {'other', 'others', 'other countries', 'corporate and other', 'all other', 'total'}
+
+
+FACT_ID = re.compile(r'^(?P<ticker>[A-Z]+)_(?P<metric>[a-z_]+?)_FY(?P<year>\d{4})(?P<period>Q\d)?$')
+
+
+def slice_call(fact_id: str, axis: str) -> str | None:
+    """The get_financials call that returns a company-wide fact's slices, read off its id; None if it is not one."""
+    m = FACT_ID.match(fact_id)
+    if m is None:
+        return None
+    return (f"get_financials(company={m['ticker']}, metric={m['metric']}, fiscal_year={m['year']}, "
+            f"period={m['period'] or 'FY'}, breakdown={axis})")
+
+
+def slice_mismatches(sentence: str, ids: list[str], values: dict[str, list[float]],
+                     slices: dict[str, dict[str, str]]) -> list[tuple[str, list[str]]]:
+    """
+    (slice name, calls that fetch it) for each slice a sentence is about although the facts it cites for that
+    company are all company-wide. Seen live: "Apple's iPhone revenue was $109,417 million [AAPL_revenue_FY2026Q3]", the total, on 3 of 3
+    unprompted runs and 1 of 3 after the tool description named iPhone. A sentence that also cites a slice fact of the
+    company passes (it may state the total beside the slice). A sentence with a figure and no citation at all is judged by
+    the run: if the company's facts fetched so far are all company-wide it is flagged, and the model is sent back once
+    for both problems (first drafts cite nothing in most bad runs, so the citation revision was spent before the slice
+    problem showed). A sentence citing only passages or calc ids is left alone. Not checked: a
+    figure in a sentence that cites only a calc id. `slices` maps ticker -> {slice name: axis}.
+    """
+    out = []
+    for ticker, names in slices.items():
+        prefix = ticker + '_'
+        cited = [i for i in ids if i.startswith(prefix) and i in values]
+        if cited:
+            facts = cited
+        elif not ids and FIGURE.search(sentence):   # a draft that cites nothing yet: judge by what the run fetched
+            facts = [i for i in values if i.startswith(prefix)]
+        else:
+            continue
+        judged = facts if cited else [i for i in values if i.startswith(prefix)]   # what shows a slice was fetched
+        if not facts or any(SLICED_ID.search(i) for i in judged):
+            continue
+        for name in sorted(names, key=len, reverse=True):
+            if name.lower() in GENERIC_SLICES or len(name) < 4:
+                continue
+            if re.search(rf'(?<!\w){re.escape(name)}(?!\w)', sentence, re.IGNORECASE):
+                calls = [slice_call(i, names[name]) for i in facts[:4]]
+                out.append((name, [c for c in calls if c]))
+                break
+    return out
+
+
 def check_citations(answer: str, seen_ids: set[str], values: dict[str, list[float]] | None = None,
-                    computed: dict[str, float] | None = None) -> dict:
+                    computed: dict[str, float] | None = None,
+                    slices: dict[str, dict[str, str]] | None = None) -> dict:
     """
     Find what is wrong with an answer's citations without judging whether they support the claims:
     uncited: sentences stating a figure with no [id], unknown_ids: cited ids that no tool ever returned,
     unsupported: (figure, sentence) pairs whose figure none of the sentence's cited facts or calculations produced.
     seen_ids is every passage, fact and calc id returned so far; values maps fact ids to the numbers they state,
-    computed maps calc ids to their results.
+    computed maps calc ids to their results. slice_mismatch: (slice name, sentence, calls) where a company-wide fact is
+    cited for a slice (slices maps ticker -> slice names; None turns this off).
     """
     values, computed = values or {}, computed or {}
-    uncited, unknown, unsupported = [], [], []
+    uncited, unknown, unsupported, mismatch = [], [], [], []
     for sentence in _sentences(answer):
         ids = _cited_ids(sentence)
         unknown.extend(i for i in ids if i not in seen_ids and i not in unknown)
         if not ids and FIGURE.search(sentence):
             uncited.append(sentence)
         unsupported.extend((f, sentence) for f in unsupported_figures(sentence, ids, values, computed))
-    return {'uncited': uncited, 'unknown_ids': unknown, 'unsupported': unsupported}
+        mismatch.extend((n, sentence, calls) for n, calls in slice_mismatches(sentence, ids, values, slices or {}))
+    return {'uncited': uncited, 'unknown_ids': unknown, 'unsupported': unsupported, 'slice_mismatch': mismatch}
 
 
 # Ways of saying a filing is missing. Generous on purpose: a false "acknowledged" leaves the answer as it was before
@@ -148,6 +203,13 @@ def revision_request(problems: dict) -> str:
                      + '\n'.join(f'- {f} in: {s}' for f, s in problems['unsupported'])
                      + '\nA number computed with calculate cites that calculation\'s id (like [calc_1]), not the facts '
                        'it was computed from; a reported number cites the fact that states it.')
+    if problems.get('slice_mismatch'):
+        parts.append('These sentences give a company-wide figure as the figure for one product, segment or region:\n'
+                     + '\n'.join(f'- {n} in: {s}' for n, s, _ in problems['slice_mismatch'])
+                     + '\nThose facts are company totals. Fetch the slice, then use and cite its fact ids:\n'
+                     + '\n'.join(f'- {c}' for c in dict.fromkeys(c for _, _, calls in problems['slice_mismatch']
+                                                                 for c in calls))
+                     + '\nIf you meant the company total, say so instead of naming the slice.')
     if problems['unknown_ids']:
         parts.append('These cited ids were never returned by a tool: ' + ', '.join(problems['unknown_ids']) + '.'
                      '\nReplace each with the id of the tool result that states the claim (the ids are in the results '
