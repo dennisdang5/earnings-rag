@@ -11,6 +11,7 @@ from earnings_rag.config import settings
 
 PROMPT_VERSION = 'v1'
 VERDICTS = ('supported', 'partial', 'unsupported', 'not_a_claim')
+SUPPORT_LABELS = VERDICTS
 RELEVANCE = ('answers', 'partial', 'off_topic')
 
 
@@ -29,8 +30,14 @@ def split_claims(answer: str) -> list[dict]:
 
 
 def evidence_items(trace: list[dict]) -> dict[str, str]:
-    """id -> text for everything the run's tools returned: passages, fact rows and calculations."""
+    """
+    id -> text for everything the run's tools returned: passages, fact rows, calculations, and tool errors. Errors
+    ("Capital One does not report gross profit", "the filings with text are ...") back claims the answer makes about what
+    is available, so they get ids of their own (get_financials_error_1); without them the judge called those claims
+    unsupported (found labelling the validation sheet).
+    """
     items: dict[str, str] = {}
+    errors = 0
     for t in trace:
         try:
             data = json.loads(t['result'])
@@ -38,6 +45,9 @@ def evidence_items(trace: list[dict]) -> dict[str, str]:
             continue
         if not isinstance(data, dict):
             continue
+        if isinstance(data.get('error'), str):
+            errors += 1
+            items[f"{t['tool']}_error_{errors}"] = f"{t['tool']} returned an error: {data['error']}"
         if 'expression' in data and 'id' in data:
             items[data['id']] = f"calculation: {data['expression']} = {data.get('result')}"
         for r in data.get('results') or []:

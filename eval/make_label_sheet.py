@@ -14,7 +14,7 @@ import yaml
 
 from earnings_rag.agent_eval import load_records
 from earnings_rag.config import REPO_ROOT
-from earnings_rag.judge_labels import build, select
+from earnings_rag.judge_labels import LABEL_HEADER, build, select
 
 
 def main() -> None:
@@ -28,12 +28,7 @@ def main() -> None:
     records = [r for p in paths for r in load_records(p)]
     sheet, meta = build(select(records))
 
-    header = ('# Label each claim. support: supported | partial | unsupported | not_a_claim  (is the claim backed by the\n'
-              '# evidence below? numbers must match, and a company total does not support a claim about one product,\n'
-              '# segment or region). addresses_question: yes | no  (does this claim help answer the question?).\n'
-              '# Evidence for ids cited in the answer is shown in full (cut at 3000 characters), other retrieved\n'
-              '# passages as a short preview; the judge sees everything.\n')
-    sheet_path.write_text(header + yaml.safe_dump(sheet, sort_keys=False, allow_unicode=True, width=120), encoding='utf-8')
+    sheet_path.write_text(LABEL_HEADER + yaml.safe_dump(sheet, sort_keys=False, allow_unicode=True, width=120), encoding='utf-8')
     (REPO_ROOT / 'eval' / 'judge_labels_meta.json').write_text(json.dumps(meta, indent=1), encoding='utf-8')
     print(f'{len(sheet)} claims -> {sheet_path}')
 

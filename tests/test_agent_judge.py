@@ -27,9 +27,9 @@ def test_claims_are_numbered_sentences_and_keep_paragraph_citations():
     assert claims[2]['ids'] == [] and claims[3]['ids'] == ['NVDA_2025-01-26_0005']   # cited in the paragraph, not in this sentence
 
 
-def test_evidence_covers_passages_facts_and_calculations_and_skips_errors():
+def test_evidence_covers_passages_facts_calculations_and_errors_but_not_unparseable_results():
     items = evidence_items(TRACE)
-    assert set(items) == {'NVDA_2025-01-26_0005', 'AAPL_revenue_FY2026Q3', 'calc_1'}
+    assert set(items) == {'NVDA_2025-01-26_0005', 'AAPL_revenue_FY2026Q3', 'calc_1', 'search_filings_error_1'}
     assert 'DLSS boosts frame rates.' in items['NVDA_2025-01-26_0005']
     assert '109417' in items['AAPL_revenue_FY2026Q3'] and '1 + 1 = 2' in items['calc_1']
 
@@ -118,3 +118,41 @@ def test_the_sheet_is_blind_and_unlabelled_and_the_metadata_has_the_strata():
         assert e['support'] == '' and e['addresses_question'] == ''
     assert {m['label_id'] for m in meta} == {e['label_id'] for e in sheet}
     assert {m['split'] for m in meta} == {'dev', 'test'} and all('stratum' in m for m in meta)
+
+
+def test_tool_errors_are_evidence_for_claims_about_what_is_available():
+    trace = [{'tool': 'get_financials', 'result': '{"error": "COF does not report gross_profit. Available: revenue"}'},
+             {'tool': 'search_filings', 'result': '{"error": "No FY2031 10-K. Filings with text: FY2025"}'}]
+    items = evidence_items(trace)
+    assert set(items) == {'get_financials_error_1', 'search_filings_error_2'}
+    assert 'does not report gross_profit' in items['get_financials_error_1']
+
+
+def test_uncited_passages_show_the_sentences_most_like_the_claim():
+    from earnings_rag.judge_labels import excerpt
+    text = ('Intro about nothing. We compete on the rates we pay on deposits and our customer service. '
+            'Unrelated sentence about leases.')
+    out = excerpt(text, 'The company competes on rates and customer service.')
+    assert 'customer service' in out and 'leases' not in out
+    assert excerpt('nothing matches here at all', 'zzzz qqqq') == 'nothing matches here at all'
+
+
+# --- agreement and the human review set ---------------------------------------
+
+def test_compare_counts_exact_binary_and_relevance_agreement():
+    from earnings_rag.judge_agreement import compare
+    labels = {i: {'support': s, 'addresses_question': a} for i, s, a in
+              [('L1', 'supported', 'yes'), ('L2', 'partial', 'yes'), ('L3', 'unsupported', 'no'), ('L4', 'supported', 'yes')]}
+    judged = {i: {'support': s, 'addresses_question': a} for i, s, a in
+              [('L1', 'supported', 'yes'), ('L2', 'supported', 'yes'), ('L3', 'unsupported', 'yes'), ('L4', 'supported', 'yes')]}
+    r = compare(labels, judged)
+    assert (r['support_agree'], r['binary_agree'], r['addresses_agree']) == (0.75, 0.75, 0.75)
+    assert r['matrix']['partial']['supported'] == 1 and r['disagreements'] == ['L2', 'L3']
+
+
+def test_the_review_set_has_every_disagreement_and_a_seeded_sample_of_agreements():
+    from earnings_rag.judge_agreement import review_set
+    ids = [f'L{i:02d}' for i in range(1, 31)]
+    a = review_set(['L03', 'L09'], ids, agreed_sample=5)
+    assert a == review_set(['L03', 'L09'], ids, agreed_sample=5) and len(a) == 7 and {'L03', 'L09'} <= set(a)
+    assert a == sorted(a)

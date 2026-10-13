@@ -1,8 +1,10 @@
-# Label each claim. support: supported | partial | unsupported | not_a_claim  (is the claim backed by the
-# evidence below? numbers must match, and a company total does not support a claim about one product,
-# segment or region). addresses_question: yes | no  (does this claim help answer the question?).
-# Evidence for ids cited in the answer is shown in full (cut at 3000 characters), other retrieved
-# passages as a short preview; the judge sees everything.
+# Label each claim. support: supported | partial | unsupported | not_a_claim  (is the claim backed by anything the
+# agent retrieved, shown below? numbers must match, and a company total does not support a claim about one product,
+# segment or region; a statement that a filing or metric is not available is backed by the tool error shown).
+# addresses_question: yes | no  (does this claim help answer the question?).
+# Evidence for ids cited in the answer is shown in full (cut at 3000 characters); other retrieved passages as the
+# sentences most similar to the claim. The cited ids may not be the passages that support the claim: judge support
+# by all the evidence shown, not by the ids cited.
 - label_id: L01
   question: What did NVIDIA report last quarter about data center demand?
   answer: "In NVIDIA's Q2 FY2027 report, the company highlighted several key points regarding data center demand:\n\n1. **Revenue\
@@ -76,19 +78,25 @@
       \ Our commitments, which are typically six years in duration, totaled $36 billion as of"
   - id: NVDA_2026-07-26_0024
     cited_in_answer: false
-    text: "NVDA 10-Q Q2 FY2027, period 2026-07-26\n inventory and purchase obligations, as the demand for H200 products diminished.\
-      \ After incurring that charge, we have made a fraction of the allowed shipments under the USG’s H200 licensing program.\
-      \ Those shipments account for less than 1% of Data Center revenu"
+    text: 'NVDA 10-Q Q2 FY2027, period 2026-07-26 ... inventory and purchase obligations, as the demand for H200 products
+      diminished. ... After incurring that charge, we have made a fraction of the allowed shipments under the USG’s H200 licensing
+      program. ... The licenses require that the H200s go through an inspection process in the United States prior to any
+      shipment to the customer. ... Our platforms address large markets where our expertise is critical: Data Center and Edge
+      Computing.'
   - id: NVDA_2026-07-26_0025
     cited_in_answer: false
-    text: "NVDA 10-Q Q2 FY2027, period 2026-07-26\n revenue by market platform and the comparable periods have been recast.\n\
-      (2) During the second quarter of fiscal year 2027, we reclassified a company from ACIE to Hyperscale due to a change\
-      \ in their business model and recast the prior period revenue associated "
+    text: NVDA 10-Q Q2 FY2027, period 2026-07-26 ... (2) During the second quarter of fiscal year 2027, we reclassified a
+      company from ACIE to Hyperscale due to a change in their business model and recast the prior period revenue associated
+      with this company. ... ACIE revenue increased 138% from a year ago and 25% sequentially driven by end-demand from AI
+      natives, enterprises, and sovereign customers, as well as hyperscalers utilizing AI clouds. ... Operating expenses were
+      up 55% from a year ago and up 10% sequentially.
   - id: NVDA_2026-07-26_0043
     cited_in_answer: false
-    text: "NVDA 10-Q Q2 FY2027, period 2026-07-26\n licensing program. Those shipments account for less than 1% of Data Center\
-      \ revenue in our most recent quarter. The licenses require that the H200s go through an inspection process in the United\
-      \ States prior to any shipment to the customer. As a result, any H20"
+    text: NVDA 10-Q Q2 FY2027, period 2026-07-26 ... The licenses require that the H200s go through an inspection process
+      in the United States prior to any shipment to the customer. ... Under the current rules and geopolitical landscape,
+      we are unable to create and deliver a competitive product for wide distribution in China’s data center market with the
+      approval from both the USG and the Chinese government. ... In May 2025, the USG announced that it would rescind the
+      AI Diffusion IFR and implement a replacement rule.
   support: ''
   addresses_question: ''
 - label_id: L02
@@ -241,11 +249,17 @@
       \ controls has and could in the future lead to excess inventory or cause us to incur related supply charges. Additional\
       \ unilateral or multilateral controls are also likely to include deemed export control limitations that negatively impact\
       \ the ability of our research and development teams to execute our roa"
+  - id: search_filings_error_1
+    cited_in_answer: false
+    text: 'Tell the user that first; if you then answer from a different period, say which one. ... Filings with text: NVDA:
+      10-Q Q1 FY2023-Q2 FY2027 (14); 10-K FY2023-FY2026 (4)'
   - id: NVDA_2026-07-26_0043
     cited_in_answer: false
-    text: "NVDA 10-Q Q2 FY2027, period 2026-07-26\n licensing program. Those shipments account for less than 1% of Data Center\
-      \ revenue in our most recent quarter. The licenses require that the H200s go through an inspection process in the United\
-      \ States prior to any shipment to the customer. As a result, any H20"
+    text: NVDA 10-Q Q2 FY2027, period 2026-07-26 ... The export controls applicable to China are complex and address a variety
+      of parameters, including the total processing performance of a chip, the “performance density” of a chip, the interconnect
+      bandwidth of a chip, and the memory bandwidth of a chip. ... In addition to controls targeting D:1, D:4 and D:5 countries,
+      the USG has also imposed worldwide export controls impacting our products, and may impose additional controls in the
+      future.
   support: ''
   addresses_question: ''
 - label_id: L03
@@ -281,27 +295,30 @@
       \ were as follows (dollars in millions):\nProducts Gross Margin\nProducts gross margin and gross margin percentage"
   - id: AAPL_2026-06-27_0019
     cited_in_answer: false
-    text: "AAPL 10-Q Q3 FY2026, period 2026-06-27\n times subject to industry-wide shortages and significant commodity pricing\
-      \ fluctuations that can materially adversely affect the Company’s business, results of operations, financial condition\
-      \ and stock price. For example, the Company is experiencing a period o"
+    text: AAPL 10-Q Q3 FY2026, period 2026-06-27 ... Additionally, the Company’s new products often utilize custom components
+      available from only one source. ... If the Company is unable to obtain adequate compute capacity in a timely manner
+      or at commercially reasonable rates, this can limit the functionality and availability of its products and services,
+      delay the deployment of new features or offerings, or cause the Company to incur significantly higher
   - id: AAPL_2026-06-27_0020
     cited_in_answer: false
-    text: "AAPL 10-Q Q3 FY2026, period 2026-06-27\n If the Company is unable to obtain adequate compute capacity in a timely\
-      \ manner or at commercially reasonable rates, this can limit the functionality and availability of its products and\
-      \ services, delay the deployment of new features or offerings, or cause the"
+    text: AAPL 10-Q Q3 FY2026, period 2026-06-27 ... In addition, the Company may over- or under-estimate requirements, either
+      of which could result in higher-than-expected costs for the Company or an inability to fully satisfy customer demand.
+      ... This analysis may be based on factors such as the market position of the Company and its products, the anticipated
+      revenue that may be generated, expected future growth of product sales, and the costs of developing such applications
+      and services.
   - id: AAPL_2026-06-27_0021
     cited_in_answer: false
-    text: 'AAPL 10-Q Q3 FY2026, period 2026-06-27
-
-      ’s devices can suffer.
-
-      The Company relies on the continued availability and development of compelling and innovative software applications
-      for its products. The Company’s products and operating systems are subject to rapid technological change, and when third-p'
+    text: AAPL 10-Q Q3 FY2026, period 2026-06-27 ... Where applicable, the Company may retain a commission from sales of applications
+      and sales of digital services or goods initiated within an application. ... From time to time, the Company has made
+      changes to its business, including actions taken in response to litigation, competition, market conditions and legal
+      and regulatory requirements. ... preventing it from imposing any commission or fee on certain purchases that consumers
+      make.
   - id: AAPL_2026-06-27_0009
     cited_in_answer: false
-    text: "AAPL 10-Q Q3 FY2026, period 2026-06-27\n Section 232 semiconductor sector investigation, additional sector-based\
-      \ tariffs, further actions under Section 301, or other measures. Tariffs and other measures that are applied to the\
-      \ Company’s products or their components can have a material adverse impact "
+    text: AAPL 10-Q Q3 FY2026, period 2026-06-27 ... Americas net sales increased during the third quarter and first nine
+      months of 2026 compared to the same periods in 2025 primarily due to higher net sales of iPhone, Services and Mac. ...
+      Europe net sales increased during the third quarter and first nine months of 2026 compared to the same periods in 2025
+      primarily due to higher net sales of iPhone, Services and Mac.
   support: ''
   addresses_question: ''
 - label_id: L04
@@ -476,16 +493,15 @@
       \ or the credit score is invalid are included in the 660 or below category for Domestic credit card and 620 or below\
       \ for personal loans.\n(2)Percentages represent period-end loans held for investment in each credit score category.\
       \ Auto loan credit scores generally represent average FICO scores obtained from three credit"
+  - id: search_filings_error_1
+    cited_in_answer: false
+    text: 'search_filings returned an error: No filing matches those filters, so the filing asked for is not available.'
   - id: COF_2025-12-31_0201
     cited_in_answer: false
-    text: "COF 10-K FY FY2025, period 2025-12-31\n credit card and consumer banking loan portfolios consist of smaller-balance,\
-      \ homogeneous loans. The credit card loan portfolio is inclusive of both the credit card and personal loan portfolios.\
-      \ The consumer banking loans are divided into two primary loan portfo"
+    text: CAPITAL ONE FINANCIAL CORPORATION
   - id: COF_2025-12-31_0225
     cited_in_answer: false
-    text: "COF 10-K FY FY2025, period 2025-12-31\n or below category.\nCAPITAL ONE FINANCIAL CORPORATION\nNOTES TO CONSOLIDATED\
-      \ FINANCIAL STATEMENTS\nCommercial Banking\nThe key credit quality indicator for our Commercial Banking segment is our\
-      \ internal risk ratings. We assign internal risk ratings to loans based o"
+    text: CAPITAL ONE FINANCIAL CORPORATION ... CAPITAL ONE FINANCIAL CORPORATION
   support: ''
   addresses_question: ''
 - label_id: L06
@@ -779,19 +795,24 @@
       \ Networking revenue –"
   - id: NVDA_2026-07-26_0024
     cited_in_answer: false
-    text: "NVDA 10-Q Q2 FY2027, period 2026-07-26\n inventory and purchase obligations, as the demand for H200 products diminished.\
-      \ After incurring that charge, we have made a fraction of the allowed shipments under the USG’s H200 licensing program.\
-      \ Those shipments account for less than 1% of Data Center revenu"
+    text: 'Those shipments account for less than 1% of Data Center revenue in our most recent quarter. ... Macroeconomic factors,
+      including tariffs, inflation, interest rate changes, capital market volatility, global supply chain constraints, and
+      global economic and geopolitical developments and conflicts, have direct and indirect impacts on our results of operations,
+      particularly demand for our products. ... Our platforms address large markets where our expertise is critical: Data
+      Center and Edge Computing.'
   - id: NVDA_2026-07-26_0043
     cited_in_answer: false
-    text: "NVDA 10-Q Q2 FY2027, period 2026-07-26\n licensing program. Those shipments account for less than 1% of Data Center\
-      \ revenue in our most recent quarter. The licenses require that the H200s go through an inspection process in the United\
-      \ States prior to any shipment to the customer. As a result, any H20"
+    text: Those shipments account for less than 1% of Data Center revenue in our most recent quarter. ... As of the end of
+      the second quarter of fiscal year 2027, while we were able to ship uncontrolled products to China, such as gaming and
+      workstation GPUs, we were effectively foreclosed from competing in China’s data center computing/compute market, and
+      our effective foreclosure from the China market helped our competitors build larger developer and customer ecosystems
+      to challenge us worldwide.
   - id: NVDA_2026-07-26_0022
     cited_in_answer: false
-    text: "NVDA 10-Q Q2 FY2027, period 2026-07-26\n support on the land, power, and shell buildout at SB Energy’s PORTS Technology\
-      \ Campus in Pike County, Ohio, covering leases for approximately 4.25 gigawatts of IT load. The campus will exclusively\
-      \ host our compute under 20-year leases to OpenAI, subject to lim"
+    text: In the second quarter of fiscal year 2027, we introduced a new business model with certain select AI cloud partners,
+      to enable broader access to our data center infrastructure products to serve AI startups, model builders, enterprises,
+      research organizations, and sovereign customers. ... We believe these AI cloud partners have strong customer demand
+      and robust sales pipelines but are constrained by the large-scale infrastructure that is required to meet that demand.
   support: ''
   addresses_question: ''
 - label_id: L10
@@ -912,14 +933,17 @@
     text: 'calculation: (89 - 75) / 75 * 100 = 18.6666666667'
   - id: NVDA_2026-07-26_0024
     cited_in_answer: false
-    text: "NVDA 10-Q Q2 FY2027, period 2026-07-26\n inventory and purchase obligations, as the demand for H200 products diminished.\
-      \ After incurring that charge, we have made a fraction of the allowed shipments under the USG’s H200 licensing program.\
-      \ Those shipments account for less than 1% of Data Center revenu"
+    text: After incurring that charge, we have made a fraction of the allowed shipments under the USG’s H200 licensing program.
+      ... Those shipments account for less than 1% of Data Center revenue in our most recent quarter. ... The licenses require
+      that the H200s go through an inspection process in the United States prior to any shipment to the customer. ... Within
+      our supply chain, we continuously manage product availability and costs with our vendors.
   - id: NVDA_2026-07-26_0043
     cited_in_answer: false
-    text: "NVDA 10-Q Q2 FY2027, period 2026-07-26\n licensing program. Those shipments account for less than 1% of Data Center\
-      \ revenue in our most recent quarter. The licenses require that the H200s go through an inspection process in the United\
-      \ States prior to any shipment to the customer. As a result, any H20"
+    text: Those shipments account for less than 1% of Data Center revenue in our most recent quarter. ... As of the end of
+      the second quarter of fiscal year 2027, while we were able to ship uncontrolled products to China, such as gaming and
+      workstation GPUs, we were effectively foreclosed from competing in China’s data center computing/compute market, and
+      our effective foreclosure from the China market helped our competitors build larger developer and customer ecosystems
+      to challenge us worldwide.
   support: ''
   addresses_question: ''
 - label_id: L11
@@ -1003,22 +1027,24 @@
       \ of iPhone. The weakness in the yen relative to the U.S. dollar had an unfavorable year-over-year impact on"
   - id: AAPL_2026-06-27_0003
     cited_in_answer: false
-    text: "AAPL 10-Q Q3 FY2026, period 2026-06-27\n exchange rates, the Company may use forwards, cross-currency swaps or\
-      \ other instruments. The Company designates these instruments as either cash flow or fair value hedges. As of June 27,\
-      \ 2026, the maximum length of time over which the Company is hedging its ex"
+    text: AAPL 10-Q Q3 FY2026, period 2026-06-27 ... The Company designates these instruments as either cash flow or fair
+      value hedges. ... The Company may also use derivative instruments that are not designated as accounting hedges to protect
+      gross margins from certain fluctuations in foreign exchange rates, as well as to offset a portion of the foreign currency
+      gains and losses generated by the remeasurement of certain assets and liabilities denominated in non-functional currencies.
+      ... Apple Inc.
   - id: AAPL_2026-06-27_0002
     cited_in_answer: false
-    text: "AAPL 10-Q Q3 FY2026, period 2026-06-27\n June 27, 2026 and June 28, 2025 (net income in millions and shares in\
-      \ thousands):\nNote 4 – Financial Instruments\nCash, Cash Equivalents and Marketable Securities\nThe following tables\
-      \ show the Company’s cash, cash equivalents and marketable securities by signif"
+    text: AAPL 10-Q Q3 FY2026, period 2026-06-27 ... Apple Inc. ... The Company may use derivative instruments to partially
+      offset its business exposure to foreign exchange and interest rate risk. ... To protect gross margins from fluctuations
+      in foreign exchange rates, the Company may use forwards, options or other instruments, and may designate these instruments
+      as cash flow hedges. ... The Company designates these instruments as either cash flow or fair value hedges.
   - id: AAPL_2026-06-27_0021
     cited_in_answer: false
-    text: 'AAPL 10-Q Q3 FY2026, period 2026-06-27
-
-      ’s devices can suffer.
-
-      The Company relies on the continued availability and development of compelling and innovative software applications
-      for its products. The Company’s products and operating systems are subject to rapid technological change, and when third-p'
+    text: AAPL 10-Q Q3 FY2026, period 2026-06-27 ... If third-party developers use alternative methods of distribution and
+      payment for their apps and digital content, including direct-to-consumer distribution models, the Company may earn a
+      lower commission on such sales, or may not earn a commission at all, which can materially adversely affect the Company’s
+      revenue, gross margin, results of operations, financial condition and stock price. ... The Company expects to make further
+      business changes in the future.
   support: ''
   addresses_question: ''
 - label_id: L12
@@ -1115,19 +1141,23 @@
     text: 'calculation: (89000 - 75400) / 75400 * 100 = 18.0371352785'
   - id: NVDA_2026-07-26_0024
     cited_in_answer: false
-    text: "NVDA 10-Q Q2 FY2027, period 2026-07-26\n inventory and purchase obligations, as the demand for H200 products diminished.\
-      \ After incurring that charge, we have made a fraction of the allowed shipments under the USG’s H200 licensing program.\
-      \ Those shipments account for less than 1% of Data Center revenu"
+    text: NVDA 10-Q Q2 FY2027, period 2026-07-26 ... Those shipments account for less than 1% of Data Center revenue in our
+      most recent quarter. ... If the conflict escalates or extends, it could affect future product development, supply chain,
+      and revenue, and create business uncertainty. ... While difficult to isolate and quantify, these macroeconomic factors
+      impact our supply chain and manufacturing costs, employee wages, costs for capital equipment, the value of our investments,
+      revenue, and competitive position.
   - id: NVDA_2026-07-26_0025
     cited_in_answer: false
-    text: "NVDA 10-Q Q2 FY2027, period 2026-07-26\n revenue by market platform and the comparable periods have been recast.\n\
-      (2) During the second quarter of fiscal year 2027, we reclassified a company from ACIE to Hyperscale due to a change\
-      \ in their business model and recast the prior period revenue associated "
+    text: NVDA 10-Q Q2 FY2027, period 2026-07-26 ... revenue by market platform and the comparable periods have been recast.
+      ... (2) During the second quarter of fiscal year 2027, we reclassified a company from ACIE to Hyperscale due to a change
+      in their business model and recast the prior period revenue associated with this company. ... Revenue was $96.2 billion,
+      up 106% from a year ago and up 18% sequentially. ... Edge Computing revenue was $7.2 billion, up 27% from a year ago
+      and up 13% sequentially.
   - id: NVDA_2026-07-26_0043
     cited_in_answer: false
-    text: "NVDA 10-Q Q2 FY2027, period 2026-07-26\n licensing program. Those shipments account for less than 1% of Data Center\
-      \ revenue in our most recent quarter. The licenses require that the H200s go through an inspection process in the United\
-      \ States prior to any shipment to the customer. As a result, any H20"
+    text: NVDA 10-Q Q2 FY2027, period 2026-07-26 ... Those shipments account for less than 1% of Data Center revenue in our
+      most recent quarter. ... In addition to controls targeting D:1, D:4 and D:5 countries, the USG has also imposed worldwide
+      export controls impacting our products, and may impose additional controls in the future.
   - id: calc_1
     cited_in_answer: false
     text: 'calculation: (89000 - 40900) / 40900 * 100 = 117.6039119804'
@@ -1325,16 +1355,24 @@
       \ or the credit score is invalid are included in the 660 or below category for Domestic credit card and 620 or below\
       \ for personal loans.\n(2)Percentages represent period-end loans held for investment in each credit score category.\
       \ Auto loan credit scores generally represent average FICO scores obtained from three credit"
+  - id: search_filings_error_1
+    cited_in_answer: false
+    text: 'search_filings returned an error: No filing matches those filters, so the filing asked for is not available. Tell
+      the user that first; if you then answer from a different period, say which one. Filing'
   - id: COF_2025-12-31_0201
     cited_in_answer: false
-    text: "COF 10-K FY FY2025, period 2025-12-31\n credit card and consumer banking loan portfolios consist of smaller-balance,\
-      \ homogeneous loans. The credit card loan portfolio is inclusive of both the credit card and personal loan portfolios.\
-      \ The consumer banking loans are divided into two primary loan portfo"
+    text: In assessing the risk rating of a particular commercial banking loan, among the factors we consider are the financial
+      condition of the borrower, geography, collateral performance, historical loss experience and industry-specific information
+      that management believes is relevant in determining and measuring expected credit losses. ... For this reason, expected
+      credit losses are measured based only on the drawn balance at each quarterly measurement date and not on the undrawn
+      exposure.
   - id: COF_2025-12-31_0225
     cited_in_answer: false
-    text: "COF 10-K FY FY2025, period 2025-12-31\n or below category.\nCAPITAL ONE FINANCIAL CORPORATION\nNOTES TO CONSOLIDATED\
-      \ FINANCIAL STATEMENTS\nCommercial Banking\nThe key credit quality indicator for our Commercial Banking segment is our\
-      \ internal risk ratings. We assign internal risk ratings to loans based o"
+    text: CAPITAL ONE FINANCIAL CORPORATION ... NOTES TO CONSOLIDATED FINANCIAL STATEMENTS ... The key credit quality indicator
+      for our Commercial Banking segment is our internal risk ratings. ... In determining the risk rating of a particular
+      loan, some of the factors considered are the borrower’s current financial condition, historical and projected future
+      credit performance, prospects for support from financially responsible guarantors, the estimated realizable value of
+      any collateral and current economic trends.
   support: ''
   addresses_question: ''
 - label_id: L15
@@ -1488,9 +1526,10 @@
       \ the ability of our research and development teams to execute our roa"
   - id: NVDA_2026-07-26_0043
     cited_in_answer: false
-    text: "NVDA 10-Q Q2 FY2027, period 2026-07-26\n licensing program. Those shipments account for less than 1% of Data Center\
-      \ revenue in our most recent quarter. The licenses require that the H200s go through an inspection process in the United\
-      \ States prior to any shipment to the customer. As a result, any H20"
+    text: NVDA 10-Q Q2 FY2027, period 2026-07-26 ... Unless we are able to return with a data center system that meets the
+      approval of both the USG and the Chinese government, our lost opportunity and the benefit to our competitors will have
+      a material and adverse impact on our business, operating results, and financial condition. ... The IFR would have imposed
+      a worldwide licensing requirement on our data center products, such as our H200, GB200 and GB300.
   support: ''
   addresses_question: ''
 - label_id: L16
@@ -1610,42 +1649,43 @@
       \ of iPhone. The weakness in the yen relative to the U.S. dollar had an unfavorable year-over-year impact on"
   - id: AAPL_2025-06-28_0003
     cited_in_answer: false
-    text: "AAPL 10-Q Q3 FY2025, period 2025-06-28\n hedge certain exposures for a variety of reasons, including accounting\
-      \ considerations or the prohibitive economic cost of hedging particular exposures. There can be no assurance the hedges\
-      \ will offset more than a portion of the financial impact resulting from "
+    text: hedge certain exposures for a variety of reasons, including accounting considerations or the prohibitive economic
+      cost of hedging particular exposures. ... The Company may also use derivative instruments that are not designated as
+      accounting hedges to protect gross margins from certain fluctuations in foreign exchange rates, as well as to offset
+      a portion of the foreign currency gains and losses generated by the remeasurement of certain assets and liabilities
+      denominated in non-functional currencies.
   - id: AAPL_2025-06-28_0011
     cited_in_answer: false
-    text: "AAPL 10-Q Q3 FY2025, period 2025-06-28\n 2024 due primarily to higher Services net sales and a different mix of\
-      \ services.\nServices gross margin percentage increased during the third quarter and first nine months of 2025 compared\
-      \ to the same periods in 2024 due primarily to a different mix of services"
+    text: Apple Inc.
   - id: AAPL_2025-06-28_0002
     cited_in_answer: false
-    text: "AAPL 10-Q Q3 FY2025, period 2025-06-28\n thousands):\nNote 4 – Financial Instruments\nCash, Cash Equivalents and\
-      \ Marketable Securities\nThe following tables show the Company’s cash, cash equivalents and marketable securities by\
-      \ significant investment category as of June 28, 2025 and September 28, 2024 ("
+    text: Apple Inc. ... These restricted cash and cash equivalents were designated to settle the Company’s obligation related
+      to the 2016 European Commission (the “Commission”) decision that Ireland granted state aid to the Company (the “State
+      Aid Decision”), which was confirmed during the fourth quarter of 2024 by the European Court of Justice in a reversal
+      of the 2020 judgment of the European General Court.
   - id: AAPL_2025-06-28_0010
     cited_in_answer: false
-    text: "AAPL 10-Q Q3 FY2025, period 2025-06-28\n 2024 due to higher net sales of both laptops and desktops.\niPad\niPad\
-      \ net sales decreased during the third quarter of 2025 compared to the third quarter of 2024 due to lower net sales\
-      \ of iPad Pro®, partially offset by higher net sales of all other iPad models. "
+    text: Apple Inc. ... Products gross margin increased during the third quarter of 2025 compared to the third quarter of
+      2024 due primarily to a different mix of products and favorable costs, partially offset by tariffs. ... Products gross
+      margin increased during the first nine months of 2025 compared to the same period in 2024 due primarily to favorable
+      costs and a different mix of products, partially offset by tariffs and the weakness in foreign currencies relative to
+      the U.S.
   - id: AAPL_2026-06-27_0003
     cited_in_answer: false
-    text: "AAPL 10-Q Q3 FY2026, period 2026-06-27\n exchange rates, the Company may use forwards, cross-currency swaps or\
-      \ other instruments. The Company designates these instruments as either cash flow or fair value hedges. As of June 27,\
-      \ 2026, the maximum length of time over which the Company is hedging its ex"
+    text: The Company may also use derivative instruments that are not designated as accounting hedges to protect gross margins
+      from certain fluctuations in foreign exchange rates, as well as to offset a portion of the foreign currency gains and
+      losses generated by the remeasurement of certain assets and liabilities denominated in non-functional currencies. ...
+      Apple Inc. ... The Company requires third-party credit support or collateral from certain customers to limit credit
+      risk.
   - id: AAPL_2026-06-27_0002
     cited_in_answer: false
-    text: "AAPL 10-Q Q3 FY2026, period 2026-06-27\n June 27, 2026 and June 28, 2025 (net income in millions and shares in\
-      \ thousands):\nNote 4 – Financial Instruments\nCash, Cash Equivalents and Marketable Securities\nThe following tables\
-      \ show the Company’s cash, cash equivalents and marketable securities by signif"
+    text: Apple Inc. ... However, the Company may choose not to hedge certain exposures for a variety of reasons, including
+      accounting considerations or the prohibitive economic cost of hedging particular exposures.
   - id: AAPL_2026-06-27_0021
     cited_in_answer: false
-    text: 'AAPL 10-Q Q3 FY2026, period 2026-06-27
-
-      ’s devices can suffer.
-
-      The Company relies on the continued availability and development of compelling and innovative software applications
-      for its products. The Company’s products and operating systems are subject to rapid technological change, and when third-p'
+    text: The Company is also currently subject to a court order in the U.S. ... preventing it from imposing any commission
+      or fee on certain purchases that consumers make. ... The Ninth Circuit Court has instructed the California District
+      Court to further amend or modify its injunction to allow the Company to charge a commission.
   support: ''
   addresses_question: ''
 - label_id: L17
@@ -1901,38 +1941,41 @@
       \ United States of America (“U.S. GAAP”), we are required to use certain assumptions, judgments"
   - id: AAPL_2025-09-27_0021
     cited_in_answer: false
-    text: "AAPL 10-K FY FY2025, period 2025-09-27\n business, reputation, results of operations and financial condition.\n\
-      The Company has invested, and in the future may invest, in new business strategies, commercial relationships and acquisitions.\
-      \ Such endeavors may involve significant risks and uncertainties, "
+    text: Such endeavors may involve significant risks and uncertainties, including distraction of management from current
+      operations, greater-than-expected liabilities and expenses, economic, political, legal and regulatory challenges associated
+      with operating in new businesses, regions or countries, inadequate return on capital, potential impairment of tangible
+      and intangible assets, and significant write-offs.
   - id: AAPL_2025-09-27_0019
     cited_in_answer: false
-    text: 'AAPL 10-K FY FY2025, period 2025-09-27
-
-      .
-
-      The Company and its global supply chain are dependent on complex information technology systems and are exposed to information
-      technology system failures or network disruptions caused by natural disasters, accidents, power disruptions, telecommunications
-      fail'
+    text: The Company and its global supply chain are dependent on complex information technology systems and are exposed
+      to information technology system failures or network disruptions caused by natural disasters, accidents, power disruptions,
+      telecommunications failures, acts of terrorism or war, computer viruses, physical or electronic break-ins, ransomware
+      or other cybersecurity incidents, or other events or disruptions.
   - id: AAPL_2025-09-27_0020
     cited_in_answer: false
-    text: "AAPL 10-K FY FY2025, period 2025-09-27\n information and may disrupt normal business operations. Attacks can impair\
-      \ the Company’s ability to attract and retain customers for its products and services, affect its stock price, damage\
-      \ commercial relationships, and expose the Company to litigation or gov"
+    text: Globally, attacks are expected to continue accelerating in both frequency and sophistication with increasing use
+      by actors of tools and techniques that are designed to circumvent controls, avoid detection, and remove or obfuscate
+      forensic evidence, all of which hinders the Company’s ability to identify, investigate and recover from incidents. ...
+      In addition, attacks against the Company and its customers can escalate during periods of geopolitical tensions or conflict.
   - id: COF_2025-12-31_0093
     cited_in_answer: false
-    text: "COF 10-K FY FY2025, period 2025-12-31\n for our senior leadership, our business could be negatively affected.\n\
-      In addition, advances in technology, such as automation and AI, may lead to workforce evolution. This could require\
-      \ us to invest in additional employee training, manage impacts on morale and "
+    text: We face risks from catastrophic events. ... Natural disasters, geopolitical events, supply chain issues and other
+      catastrophic events can have widespread and unpredictable impacts on global society, economic conditions and consumer
+      and business behavior, which may reoccur or occur over an extended duration. ... The impact of such events and other
+      catastrophes on the overall economy and our physical and transition risks may also adversely affect our financial condition
+      and results of operations.
   - id: COF_2025-12-31_0034
     cited_in_answer: false
-    text: "COF 10-K FY FY2025, period 2025-12-31\n that accept cards on our recently acquired Discover Network or PULSE Network;\n\
-      •defaults or risks from bankruptcies, liquidations, restructurings, consolidations and outages by our network participants;\n\
-      •our ability to invest successfully in and introduce digita"
+    text: that accept cards on our recently acquired Discover Network or PULSE Network; ... •our ability to manage risks from
+      catastrophic events; ... •other risk factors identified from time to time in our public disclosures, including in the
+      reports that we file with the SEC. ... The following discussion sets forth what management currently believes could
+      be the material risks and uncertainties that could impact our businesses, results of operations and financial condition.
   - id: COF_2025-12-31_0072
     cited_in_answer: false
-    text: "COF 10-K FY FY2025, period 2025-12-31\n the Transaction, we have assumed the contingencies and liabilities of Discover,\
-      \ for which we have incurred and may continue to incur financial risk, compliance obligations, litigation risk, or reputational\
-      \ risk, including as a result of assuming ongoing litigat"
+    text: the Transaction, we have assumed the contingencies and liabilities of Discover, for which we have incurred and may
+      continue to incur financial risk, compliance obligations, litigation risk, or reputational risk, including as a result
+      of assuming ongoing litigation disputes, claims, government agency investigations and enforcement actions and other
+      proceedings associated with Discover’s actions prior to the Transaction. ... Other Business Risks
   support: ''
   addresses_question: ''
 - label_id: L20
@@ -2053,16 +2096,24 @@
       \ such products to markets outside China, including the U.S. and Europe. For example, the French Competition Authority\
       \ (FCA) is questioning whether gaming GPUs and data center GPUs are separate product categories, an inquiry that may\
       \ impact the export controls applicable"
+  - id: search_filings_error_1
+    cited_in_answer: false
+    text: 'Tell the user that first; if you then answer from a different period, say which one. ... Filings with text: NVDA:
+      10-Q Q1 FY2023-Q2 FY2027 (14); 10-K FY2023-FY2026 (4)'
   - id: NVDA_2026-07-26_0042
     cited_in_answer: false
-    text: "NVDA 10-Q Q2 FY2027, period 2026-07-26\n products destined to certain customers and other regions, including some\
-      \ countries in the Middle East.\nIn October 2023, the USG announced new and updated licensing requirements for exports\
-      \ to China and Country Groups D:1, D:4, and D:5 (including but not limite"
+    text: The licensing requirements also apply to the export of products exceeding certain performance thresholds to a party
+      headquartered in, or with an ultimate parent headquartered in, Country Group D5, including China. ... Beginning in February
+      2026, the USG granted licenses that would allow us to ship small amounts of H200 products to specific China-based customers,
+      but such sales were restricted by the PRC government, and we have been unable to sell all the products for which we
+      have licenses.
   - id: NVDA_2026-07-26_0041
     cited_in_answer: false
-    text: "NVDA 10-Q Q2 FY2027, period 2026-07-26\n controls has and could in the future lead to excess inventory or cause\
-      \ us to incur related supply charges. Additional unilateral or multilateral controls are also likely to include deemed\
-      \ export control limitations that negatively impact the ability of our res"
+    text: Additional export restrictions may not only impact our ability to serve overseas markets, but also provoke responses
+      from foreign governments, including China, that negatively impact our supply chain or our ability to provide our products
+      and services to customers in all markets worldwide, which could also substantially reduce our revenue. ... In August
+      2022, the USG announced export restrictions and export licensing requirements targeting China’s semiconductor and supercomputing
+      industries.
   support: ''
   addresses_question: ''
 - label_id: L21
@@ -2238,38 +2289,36 @@
       \ United States of America (“U.S. GAAP”), we are required to use certain assumptions, judgments"
   - id: AAPL_2025-09-27_0019
     cited_in_answer: false
-    text: 'AAPL 10-K FY FY2025, period 2025-09-27
-
-      .
-
-      The Company and its global supply chain are dependent on complex information technology systems and are exposed to information
-      technology system failures or network disruptions caused by natural disasters, accidents, power disruptions, telecommunications
-      fail'
+    text: System upgrades, redundancy and other continuity measures may be ineffective or inadequate, and the Company’s or
+      its vendors’ business continuity and disaster recovery planning may not be sufficient for all eventualities. ... Such
+      failures or disruptions can adversely impact the Company’s business by, among other things, preventing access to the
+      Company’s online services, interfering with customer transactions or impeding the manufacturing and shipping of the
+      Company’s products.
   - id: AAPL_2025-09-27_0020
     cited_in_answer: false
-    text: "AAPL 10-K FY FY2025, period 2025-09-27\n information and may disrupt normal business operations. Attacks can impair\
-      \ the Company’s ability to attract and retain customers for its products and services, affect its stock price, damage\
-      \ commercial relationships, and expose the Company to litigation or gov"
+    text: To help protect customers and the Company, the Company deploys and makes available technologies like multifactor
+      authentication, monitors its services and systems for unusual activity and may freeze accounts under suspicious circumstances,
+      which, among other things, can result in the delay or loss of customer orders or impede customer access to the Company’s
+      products and services.
   - id: COF_2025-12-31_0089
     cited_in_answer: false
-    text: "COF 10-K FY FY2025, period 2025-12-31\n meet our stakeholders full range of expectations and demands could result\
-      \ in reputational damage, a loss of customer and investor confidence, increased legal and operational risks and other\
-      \ adverse effects on our results of operations and prospects. For example"
+    text: meet our stakeholders full range of expectations and demands could result in reputational damage, a loss of customer
+      and investor confidence, increased legal and operational risks and other adverse effects on our results of operations
+      and prospects.
   - id: COF_2025-12-31_0093
     cited_in_answer: false
     text: "COF 10-K FY FY2025, period 2025-12-31\n for our senior leadership, our business could be negatively affected.\n\
-      In addition, advances in technology, such as automation and AI, may lead to workforce evolution. This could require\
-      \ us to invest in additional employee training, manage impacts on morale and "
+      In addition, advances in technology, such as automation and AI, may lead to workforce evolu"
   - id: COF_2025-12-31_0034
     cited_in_answer: false
     text: "COF 10-K FY FY2025, period 2025-12-31\n that accept cards on our recently acquired Discover Network or PULSE Network;\n\
-      •defaults or risks from bankruptcies, liquidations, restructurings, consolidations and outages by our network participants;\n\
-      •our ability to invest successfully in and introduce digita"
+      •defaults or risks from bankruptcies, liquidations, restructurings, consolidations "
   - id: COF_2025-12-31_0072
     cited_in_answer: false
-    text: "COF 10-K FY FY2025, period 2025-12-31\n the Transaction, we have assumed the contingencies and liabilities of Discover,\
-      \ for which we have incurred and may continue to incur financial risk, compliance obligations, litigation risk, or reputational\
-      \ risk, including as a result of assuming ongoing litigat"
+    text: We compete on the basis of the rates we pay on deposits and the rates and other terms we charge on the loans we
+      originate or purchase, as well as the quality and range of our customer service, products, innovation and experience,
+      and, with respect to our payment network businesses, the strength, reach, pricing and capabilities of our network offerings
+      to merchants, acquirers and issuers.
   support: ''
   addresses_question: ''
 - label_id: L22
@@ -2369,29 +2418,25 @@
       \ during the first quarter of 2026 compared"
   - id: AAPL_2025-12-27_0010
     cited_in_answer: false
-    text: 'AAPL 10-Q Q1 FY2026, period 2025-12-27
-
-      dollars in millions):
-
-      Products Gross Margin
-
-      Products gross margin and gross margin percentage increased during the first quarter of 2026 compared to the same quarter
-      in 2025 primarily due to a different mix of products, partially offset by tariff costs.
-
-      Service'
+    text: Products Gross Margin ... The Company’s future gross margins can be impacted by a variety of factors, as discussed
+      in Part I, Item 1A of the 2025 Form 10-K and Part II, Item 1A of this Form 10-Q, in each case under the heading “Risk
+      Factors.” As a result, the Company believes, in general, gross margins will be subject to volatility and downward pressure.
+      ... Apple Inc. ... The Company’s effective tax rate for the first quarter of 2026 was higher compared to the first quarter
+      of 2025 primarily due to the impact
   - id: AAPL_2025-12-27_0003
     cited_in_answer: false
-    text: 'AAPL 10-Q Q1 FY2026, period 2025-12-27
-
-      , 2025, the maximum length of time over which the Company is hedging its exposure to the variability in future cash
-      flows for term debt–related foreign currency transactions is 17 years.
-
-      The Company may also use derivative instruments that are not designated as'
+    text: ', 2025, the maximum length of time over which the Company is hedging its exposure to the variability in future
+      cash flows for term debt–related foreign currency transactions is 17 years. ... Apple Inc. ... As of December 27, 2025,
+      the Company had two customers that individually represented 10% or more of total trade receivables, which accounted
+      for 15% and 10%. ... As of September 27, 2025, the Company had one customer that represented 10% or more of total trade
+      receivables, which accounted for 12%.'
   - id: AAPL_2025-12-27_0002
     cited_in_answer: false
-    text: "AAPL 10-Q Q1 FY2026, period 2025-12-27\n and Marketable Securities\nThe following tables show the Company’s cash,\
-      \ cash equivalents and marketable securities by significant investment category as of December 27, 2025 and September\
-      \ 27, 2025 (in millions):\nApple Inc. | Q1 2026 Form 10-Q | 7\n(1)The valuat"
+    text: 'The following tables show the Company’s cash, cash equivalents and marketable securities by significant investment
+      category as of December 27, 2025 and September 27, 2025 (in millions): ... Apple Inc. ... As of December 27, 2025, the
+      maximum length of time over which the Company is hedging its exposure to the variability in future cash flows for term
+      debt–related foreign currency transactions is 17 years. ... The Company may also use derivative instruments that are
+      not designated'
   support: ''
   addresses_question: ''
 - label_id: L23
@@ -2438,33 +2483,30 @@
       \ Digital content creation includes professional video editing and post-production, special effects for films, and broadcast-television"
   - id: NVDA_2023-01-29_0005
     cited_in_answer: false
-    text: "NVDA 10-K FY FY2023, period 2023-01-29\n to today’s leading server chips.\nWhile our approach starts with powerful\
-      \ chips, what makes it a full-stack computing platform is our large body of software, including the CUDA parallel programming\
-      \ model, the CUDA-X collection of application acceleration librar"
+    text: Gaming ... Our gaming platforms leverage our GPUs and sophisticated software to enhance the gaming experience with
+      smoother, higher quality graphics. ... We developed NVIDIA RTX to bring next generation graphics and AI to games. ...
+      NVIDIA RTX features ray tracing technology for real-time, cinematic-quality rendering. ... NVIDIA RTX also features
+      deep learning super sampling, or NVIDIA DLSS, our AI technology that boosts frame rates while generating beautiful,
+      sharp images for games.
   - id: NVDA_2026-01-25_0005
     cited_in_answer: false
-    text: "NVDA 10-K FY FY2026, period 2026-01-25\n software for graphics-rich virtual desktops and workstations.\nIn fiscal\
-      \ year 2025, we launched the NVIDIA Blackwell architecture, a full set of data center scale infrastructure that includes\
-      \ GPUs, CPUs, DPUs, interconnects, switch chips and systems, and networ"
+    text: Our gaming platforms leverage our GPUs and sophisticated software to enhance the gaming experience with smoother,
+      higher quality graphics. ... NVIDIA RTX features ray tracing technology for real-time, cinematic-quality rendering,
+      and deep learning super sampling, or NVIDIA DLSS, our AI technology that boosts frame rates while generating high-quality
+      images for games. ... RTX GPUs also feature NVIDIA tensor core technology making them well suited to accelerate a new
+      generation of on-device AI applications.
   - id: NVDA_2026-01-25_0002
     cited_in_answer: false
-    text: 'NVDA 10-K FY FY2026, period 2026-01-25
-
-      2026, we launched and scaled the NVIDIA Blackwell Ultra platform, optimized for agentic, reasoning, and physical AI.
-      Building on the architectural breakthroughs of Blackwell and leveraging Dynamo inference software, it delivers a significant
-      increase in token t'
+    text: 2026, we launched and scaled the NVIDIA Blackwell Ultra platform, optimized for agentic, reasoning, and physical
+      AI. ... More recently, in support of market development, we have accelerated the release cadence of our open AI model
+      platforms including NVIDIA Nemotron for agentic AI and Cosmos for physical AI. ... Gamers choose NVIDIA GPUs to enjoy
+      immersive, increasingly cinematic virtual worlds.
   - id: NVDA_2026-01-25_0000
     cited_in_answer: false
-    text: 'NVDA 10-K FY FY2026, period 2026-01-25
-
-      Item 1. Business
-
-      Our Company
-
-      NVIDIA pioneered accelerated computing to help solve the most challenging computational problems. NVIDIA is now a data
-      center scale AI infrastructure company reshaping all industries.
-
-      Our technology stack includes the foundational N'
+    text: NVIDIA pioneered accelerated computing to help solve the most challenging computational problems. ... NVIDIA is
+      now a data center scale AI infrastructure company reshaping all industries. ... Our technology stack includes the foundational
+      NVIDIA CUDA development platform that runs on all NVIDIA GPUs, as well as hundreds of domain-specific software libraries,
+      frameworks, algorithms, software development kits, or SDKs, and application programming interfaces, or APIs.
   support: ''
   addresses_question: ''
 - label_id: L24
@@ -2474,7 +2516,10 @@
     for credit losses, loans, and deposits.
   claim: Capital One does not report gross profit.
   cited_in_paragraph: []
-  evidence: []
+  evidence:
+  - id: get_financials_error_1
+    cited_in_answer: false
+    text: 'get_financials returned an error: COF does not report gross_profit.'
   support: ''
   addresses_question: ''
 - label_id: L25
@@ -2485,7 +2530,11 @@
   claim: The most recent filings with text are Apple's 10-K for FY2025 (ended September 27, 2025) and 10-Q for Q3 FY2026 (ended
     June 27, 2026).
   cited_in_paragraph: []
-  evidence: []
+  evidence:
+  - id: search_filings_error_1
+    cited_in_answer: false
+    text: 'search_filings returned an error: No filing matches those filters, so the filing asked for is not available. ...
+      Filings with text: AAPL: 10-Q Q1 FY2022-Q3 FY2026 (15); 10-K FY2022-FY2025 (4)'
   support: ''
   addresses_question: ''
 - label_id: L26
@@ -2606,18 +2655,15 @@
       the compute performance'
   - id: NVDA_2024-01-28_0013
     cited_in_answer: false
-    text: 'NVDA 10-K FY FY2024, period 2024-01-28
-
-      .S. government, or the USG, announced licensing requirements that, with certain exceptions, impact exports to China
-      (including Hong Kong and Macau) and Russia of our A100 and H100 integrated circuits, DGX or any other systems or boards
-      which incorporate A100 or'
+    text: NVDA 10-K FY FY2024, period 2024-01-28 ... government, or the USG, announced licensing requirements that, with certain
+      exceptions, impact exports to China (including Hong Kong and Macau) and Russia of our A100 and H100 integrated circuits,
+      DGX or any other systems or boards which incorporate A100 or H100 integrated circuits.
   - id: NVDA_2025-01-26_0073
     cited_in_answer: false
-    text: 'NVDA 10-K FY FY2025, period 2025-01-26
-
-      A090.a, or corresponding .z ECCNs, including all related software and technology. Any system that incorporates one or
-      more of the covered integrated circuits, or ICs, (including but not limited to NVIDIA DGX, HGX, and MGX systems) will
-      be covered by the new lic'
+    text: NVDA 10-K FY FY2025, period 2025-01-26 ... Any system that incorporates one or more of the covered integrated circuits,
+      or ICs, (including but not limited to NVIDIA DGX, HGX, and MGX systems) will be covered by the new licensing requirement.
+      ... The licensing requirement will include future NVIDIA ICs, boards, or systems classified with ECCN 3A090.a or 4A090.a,
+      or corresponding .z ECCNs, achieving certain total processing performance and/or performance density.
   support: ''
   addresses_question: ''
 - label_id: L27
@@ -2801,38 +2847,42 @@
       \ United States of America (“U.S. GAAP”), we are required to use certain assumptions, judgments"
   - id: AAPL_2025-09-27_0021
     cited_in_answer: false
-    text: "AAPL 10-K FY FY2025, period 2025-09-27\n business, reputation, results of operations and financial condition.\n\
-      The Company has invested, and in the future may invest, in new business strategies, commercial relationships and acquisitions.\
-      \ Such endeavors may involve significant risks and uncertainties, "
+    text: business, reputation, results of operations and financial condition. ... Such endeavors may involve significant
+      risks and uncertainties, including distraction of management from current operations, greater-than-expected liabilities
+      and expenses, economic, political, legal and regulatory challenges associated with operating in new businesses, regions
+      or countries, inadequate return on capital, potential impairment of tangible and intangible assets, and significant
+      write-offs.
   - id: AAPL_2025-09-27_0019
     cited_in_answer: false
-    text: 'AAPL 10-K FY FY2025, period 2025-09-27
-
-      .
-
-      The Company and its global supply chain are dependent on complex information technology systems and are exposed to information
-      technology system failures or network disruptions caused by natural disasters, accidents, power disruptions, telecommunications
-      fail'
+    text: These events could materially adversely affect the Company’s business, reputation, results of operations, financial
+      condition and stock price. ... Losses or unauthorized access to or releases of confidential information, including personal
+      information, could subject the Company to significant reputational, financial, legal and operational consequences.
   - id: AAPL_2025-09-27_0020
     cited_in_answer: false
-    text: "AAPL 10-K FY FY2025, period 2025-09-27\n information and may disrupt normal business operations. Attacks can impair\
-      \ the Company’s ability to attract and retain customers for its products and services, affect its stock price, damage\
-      \ commercial relationships, and expose the Company to litigation or gov"
+    text: Investment in new business strategies, commercial relationships and acquisitions could disrupt the Company’s ongoing
+      business, present risks not originally contemplated, and materially adversely affect the Company’s business, reputation,
+      results of operations and financial condition. ... Such endeavors may involve significant risks and uncertainties, including
+      distraction of management from current operations,
   - id: COF_2025-12-31_0093
     cited_in_answer: false
-    text: "COF 10-K FY FY2025, period 2025-12-31\n for our senior leadership, our business could be negatively affected.\n\
-      In addition, advances in technology, such as automation and AI, may lead to workforce evolution. This could require\
-      \ us to invest in additional employee training, manage impacts on morale and "
+    text: We face risks from catastrophic events. ... Our business, financial condition and results of operations may be impacted
+      by any such disruption and our ability to implement corresponding response measures quickly. ... The impact of such
+      events and other catastrophes on the overall economy and our physical and transition risks may also adversely affect
+      our financial condition and results of operations. ... Climate change risks can manifest as physical or transition risks.
+      ... Physical risks
   - id: COF_2025-12-31_0034
     cited_in_answer: false
-    text: "COF 10-K FY FY2025, period 2025-12-31\n that accept cards on our recently acquired Discover Network or PULSE Network;\n\
-      •defaults or risks from bankruptcies, liquidations, restructurings, consolidations and outages by our network participants;\n\
-      •our ability to invest successfully in and introduce digita"
+    text: •defaults or risks from bankruptcies, liquidations, restructurings, consolidations and outages by our network participants;
+      ... •changes in the reputation of, or expectations regarding, us or the financial services industry with respect to
+      practices, products, services or financial condition; ... The following discussion sets forth what management currently
+      believes could be the material risks and uncertainties that could impact our businesses, results of operations and financial
+      condition.
   - id: COF_2025-12-31_0072
     cited_in_answer: false
-    text: "COF 10-K FY FY2025, period 2025-12-31\n the Transaction, we have assumed the contingencies and liabilities of Discover,\
-      \ for which we have incurred and may continue to incur financial risk, compliance obligations, litigation risk, or reputational\
-      \ risk, including as a result of assuming ongoing litigat"
+    text: the Transaction, we have assumed the contingencies and liabilities of Discover, for which we have incurred and may
+      continue to incur financial risk, compliance obligations, litigation risk, or reputational risk, including as a result
+      of assuming ongoing litigation disputes, claims, government agency investigations and enforcement actions and other
+      proceedings associated with Discover’s actions prior to the Transaction. ... Other Business Risks
   support: ''
   addresses_question: ''
 - label_id: L29
@@ -2953,14 +3003,15 @@
     text: 'calculation: (89 - 75) / 75 * 100 = 18.6666666667'
   - id: NVDA_2026-07-26_0024
     cited_in_answer: false
-    text: "NVDA 10-Q Q2 FY2027, period 2026-07-26\n inventory and purchase obligations, as the demand for H200 products diminished.\
-      \ After incurring that charge, we have made a fraction of the allowed shipments under the USG’s H200 licensing program.\
-      \ Those shipments account for less than 1% of Data Center revenu"
+    text: 'NVDA 10-Q Q2 FY2027, period 2026-07-26 ... inventory and purchase obligations, as the demand for H200 products
+      diminished. ... The licenses require that the H200s go through an inspection process in the United States prior to any
+      shipment to the customer. ... Our platforms address large markets where our expertise is critical: Data Center and Edge
+      Computing. ... (2) During the second quarter of fiscal year 2027, we reclassified a company from ACIE to Hyperscale
+      due to a change in their business model and recast'
   - id: NVDA_2026-07-26_0043
     cited_in_answer: false
-    text: "NVDA 10-Q Q2 FY2027, period 2026-07-26\n licensing program. Those shipments account for less than 1% of Data Center\
-      \ revenue in our most recent quarter. The licenses require that the H200s go through an inspection process in the United\
-      \ States prior to any shipment to the customer. As a result, any H20"
+    text: NVDA 10-Q Q2 FY2027, period 2026-07-26 ... The licenses require that the H200s go through an inspection process
+      in the United States prior to any shipment to the customer.
   support: ''
   addresses_question: ''
 - label_id: L30
@@ -3141,37 +3192,36 @@
       \ United States of America (“U.S. GAAP”), we are required to use certain assumptions, judgments"
   - id: AAPL_2025-09-27_0021
     cited_in_answer: false
-    text: "AAPL 10-K FY FY2025, period 2025-09-27\n business, reputation, results of operations and financial condition.\n\
-      The Company has invested, and in the future may invest, in new business strategies, commercial relationships and acquisitions.\
-      \ Such endeavors may involve significant risks and uncertainties, "
+    text: The Company’s business strategies and investments may not be successful, which could materially adversely affect
+      the Company’s business, reputation, results of operations, financial condition and stock price. ... For example, technology,
+      data and other intellectual property asset–holding companies frequently assert their intellectual property rights and
+      seek royalties and often enter into litigation based on allegations of infringement or other violations of intellectual
+      property rights.
   - id: AAPL_2025-09-27_0019
     cited_in_answer: false
-    text: 'AAPL 10-K FY FY2025, period 2025-09-27
-
-      .
-
-      The Company and its global supply chain are dependent on complex information technology systems and are exposed to information
-      technology system failures or network disruptions caused by natural disasters, accidents, power disruptions, telecommunications
-      fail'
+    text: AAPL 10-K FY FY2025, period 2025-09-27 ... These events could materially adversely affect the Company’s business,
+      reputation, results of operations, financial condition and stock price. ... Although the Company takes steps to secure
+      confidential information that is provided to or accessible by third parties working on the Company’s behalf, such measures
+      are not always effective and losses or unauthorized access to, or releases of, confidential information occur.
   - id: AAPL_2025-09-27_0020
     cited_in_answer: false
-    text: "AAPL 10-K FY FY2025, period 2025-09-27\n information and may disrupt normal business operations. Attacks can impair\
-      \ the Company’s ability to attract and retain customers for its products and services, affect its stock price, damage\
-      \ commercial relationships, and expose the Company to litigation or gov"
+    text: AAPL 10-K FY FY2025, period 2025-09-27 ... Globally, attacks are expected to continue accelerating in both frequency
+      and sophistication with increasing use by actors of tools and techniques that are designed to circumvent controls, avoid
+      detection, and remove or obfuscate forensic evidence, all of which hinders the Company’s ability to identify, investigate
+      and recover from incidents.
   - id: COF_2025-12-31_0093
     cited_in_answer: false
-    text: "COF 10-K FY FY2025, period 2025-12-31\n for our senior leadership, our business could be negatively affected.\n\
-      In addition, advances in technology, such as automation and AI, may lead to workforce evolution. This could require\
-      \ us to invest in additional employee training, manage impacts on morale and "
+    text: This could require us to invest in additional employee training, manage impacts on morale and retention, and compete
+      for employment candidates who possess more advanced technological skills, all of which could have a negative impact
+      on our business and operations.
   - id: COF_2025-12-31_0034
     cited_in_answer: false
-    text: "COF 10-K FY FY2025, period 2025-12-31\n that accept cards on our recently acquired Discover Network or PULSE Network;\n\
-      •defaults or risks from bankruptcies, liquidations, restructurings, consolidations and outages by our network participants;\n\
-      •our ability to invest successfully in and introduce digita"
+    text: •our ability to protect our intellectual property rights;
   - id: COF_2025-12-31_0072
     cited_in_answer: false
-    text: "COF 10-K FY FY2025, period 2025-12-31\n the Transaction, we have assumed the contingencies and liabilities of Discover,\
-      \ for which we have incurred and may continue to incur financial risk, compliance obligations, litigation risk, or reputational\
-      \ risk, including as a result of assuming ongoing litigat"
+    text: the Transaction, we have assumed the contingencies and liabilities of Discover, for which we have incurred and may
+      continue to incur financial risk, compliance obligations, litigation risk, or reputational risk, including as a result
+      of assuming ongoing litigation disputes, claims, government agency investigations and enforcement actions and other
+      proceedings associated with Discover’s actions prior to the Transaction.
   support: ''
   addresses_question: ''
