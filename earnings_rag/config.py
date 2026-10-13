@@ -29,6 +29,7 @@ class Settings(BaseSettings):
 
     llm_model: str = 'gpt-4o-mini'
     llm_max_tokens: int = 500 # Max tokens used for output of LLM
+    judge_model: str = 'gpt-4o' # Agent eval judge; stronger than the model under test (a model grading itself is lenient)
 
     data_dir: Path = REPO_ROOT / 'data'
 
