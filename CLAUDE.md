@@ -79,7 +79,7 @@ python eval/run_eval.py --refusals                  # generation check, calls th
 - (Done: `agent/segment-balances-10q`, quarterly segment loans and deposits.)
 - (Dropped: `compare`, tried 2026-10-07, no improvement found; not merged.)
 - (Done 2026-10-13: `agent/eval-runner` (PR #22, run -> store -> score with deterministic checks, baseline in `DECISIONS.md`) and `agent/product-breakdown-hint` (PR #23, the slice check for a company total cited as an iPhone/Data Center figure).)
-- **Next:** finish `agent/eval-judge` (see "Pick up here"), then `agent/eval-sweep` (steps x max tokens), then `/agent/stream` plus UI.
+- **Next:** merge `agent/eval-judge` (PR open), then `agent/eval-sweep` (steps x max tokens), then `/agent/stream` plus UI.
 - The UI design note must include a "how this was computed" panel (tool results with source/derived/as_reported/notes, fact-id citations that open, citation-check flags, and ingest decisions such as SKIPPED/STALE, which would need to be persisted).
 
 **Pick up here (left off 2026-10-14).** `main` is clean and green in CI (283 tests). The branch **`agent/eval-judge`** (300 tests) holds the finished judge: read `DECISIONS.md` 10-14-2026 (two entries). Not merged yet: next is the PR (check `gh pr checks` first). The deterministic eval is on `main`: `python eval/run_agent_eval.py --repeats 3` then `python eval/score_agent_eval.py`; latest baseline 18/23 questions clean, the 4 known issues reproducing, mean ~8k input tokens per run.
