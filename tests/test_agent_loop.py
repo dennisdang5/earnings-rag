@@ -9,6 +9,7 @@ from datetime import date
 from earnings_rag.agent import loop
 from earnings_rag.agent.loop import SYSTEM_PROMPT, annotate_novelty, date_context, run_agent
 from earnings_rag.agent.tools import Tool, SEARCH_FILINGS
+from earnings_rag.config import settings
 
 
 from fakes import FakeClient, answer, tool_request
@@ -128,6 +129,13 @@ def test_final_answer_hitting_max_tokens_sets_cut_off():
     result = run_agent('q', FakeClient(answer('partial...', finish_reason='length')), tools=[ECHO])
     assert result.cut_off
     assert result.usage[0]['finish_reason'] == 'length'
+
+def test_max_tokens_parameter_overrides_the_setting():
+    client = FakeClient(answer('ok'), answer('ok'))
+    run_agent('q', client, tools=[ECHO])
+    run_agent('q', client, tools=[ECHO], max_tokens=123)
+    assert client.requests[0]['max_tokens'] == settings.agent_max_tokens
+    assert client.requests[1]['max_tokens'] == 123
 
 def test_normal_answer_is_not_cut_off():
     assert not run_agent('q', FakeClient(answer('whole')), tools=[ECHO]).cut_off
