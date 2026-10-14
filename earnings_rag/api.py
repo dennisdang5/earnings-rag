@@ -4,7 +4,8 @@ from pydantic import BaseModel, Field, field_validator
 from earnings_rag.config import settings
 from earnings_rag.pipeline import ask as run_ask, retrieve
 from earnings_rag.store import get_chunk
-from earnings_rag.llm import generate_stream
+from earnings_rag.llm import generate_stream, _llm
+from earnings_rag.agent_stream import stream_events
 import time
 import json
 from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST
@@ -19,6 +20,9 @@ class AskRequest(BaseModel):
     @classmethod
     def blank_to_none(cls, v):
         return v or None
+
+class AgentRequest(BaseModel):
+    question: str = Field(min_length=1, max_length=1000)
 
 class Source(BaseModel):
     id: str
@@ -48,6 +52,18 @@ ASK_LATENCY = Histogram(
     'earnings_rag_ask_duration_seconds',
     'End-to-end /ask latency',
     buckets=(0.5, 1.0, 2.0, 4.0, 8.0, 16.0)
+)
+
+AGENT_REQUESTS = Counter(
+    'earnings_rag_agent_requests_total',
+    'Total /agent/stream requests',
+    ['status']
+)
+
+AGENT_LATENCY = Histogram(
+    'earnings_rag_agent_duration_seconds',
+    'End-to-end /agent/stream latency',
+    buckets=(2.0, 4.0, 8.0, 16.0, 32.0, 64.0)
 )
 
 RETRIEVAL_DISTANCE = Histogram(
@@ -174,6 +190,40 @@ def ask_stream(req: AskRequest) -> StreamingResponse:
         events(),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+def get_agent_client():
+    return _llm()   # a function so tests can swap in a scripted client
+
+@app.post('/agent/stream')
+def agent_stream(req: AgentRequest) -> StreamingResponse:
+    def events():
+        started = time.perf_counter()
+        status = 'ok'
+        details = {}
+        try:
+            for name, data in stream_events(req.question, get_agent_client()):
+                if name == 'details':
+                    details = data
+                yield sse(name, data)
+        except Exception:
+            status = 'error'   # the stream already sent its `error` event
+            log.exception('agent_stream_failed', question=req.question)
+        finally:
+            elapsed = time.perf_counter() - started
+            AGENT_LATENCY.observe(elapsed)
+            AGENT_REQUESTS.labels(status=status).inc()
+            log.info('agent_stream', question=req.question, status=status, duration_s=round(elapsed, 3),
+                     steps=details.get('steps'), tool_calls=len(details.get('trace', [])),
+                     revised=details.get('revised'), truncated=details.get('truncated'),
+                     cut_off=details.get('cut_off'),
+                     input_tokens=sum(u['input'] for u in details.get('usage', [])),
+                     output_tokens=sum(u['output'] for u in details.get('usage', [])))
+
+    return StreamingResponse(
+        events(),
+        media_type='text/event-stream',
+        headers={'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no'},
     )
 
 @app.get('/', include_in_schema=False)
