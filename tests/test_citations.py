@@ -267,3 +267,33 @@ def test_a_draft_with_no_citations_is_judged_by_the_facts_the_run_fetched():
     assert check_citations(text, set(fetched), fetched, None, SLICE_NAMES)['slice_mismatch'] == []
     assert check_citations(text, set(), {}, None, SLICE_NAMES)['slice_mismatch'] == []
     assert check_citations('The iPhone is sold worldwide.', set(totals), totals, None, SLICE_NAMES)['slice_mismatch'] == []
+
+
+# --- progress events (the /agent/stream feed) --------------------------------
+
+def test_events_follow_the_run_and_the_answer_is_not_one_of_them():
+    events = []
+    client = FakeClient(
+        tool_request('get', '{"text": "x"}'),
+        answer('Revenue was $130.5 billion.'),
+        answer('Revenue was $130.5 billion [NVDA_revenue_FY2025].'),
+    )
+    result = run_agent('q', client, tools=[FACTS], on_event=events.append)
+    assert [e['type'] for e in events] == ['start', 'model_call', 'tool_call', 'tool_result', 'model_call', 'revising',
+                                           'model_call']
+    assert [e['step'] for e in events if e['type'] == 'model_call'] == [1, 2, 3]
+    assert events[2]['tool'] == 'get' and events[2]['arguments'] == '{"text": "x"}'
+    assert events[3]['tool'] == 'get' and 'NVDA_revenue_FY2025' in events[3]['result']
+    assert 'uncited' in events[5]['problems']
+    assert all('answer' not in e for e in events) and result.answer.endswith('[NVDA_revenue_FY2025].')
+
+
+def test_the_forced_final_call_is_marked_and_no_callback_changes_nothing():
+    client = FakeClient(tool_request('get', '{"text": "a"}', 'c1'), answer('best effort'))
+    events = []
+    run_agent('q', client, tools=[FACTS], max_steps=1, on_event=events.append)
+    assert events[-1] == {'type': 'model_call', 'step': 2, 'forced': True}
+
+    plain = run_agent('q', FakeClient(tool_request('get', '{"text": "a"}', 'c1'), answer('best effort')),
+                      tools=[FACTS], max_steps=1)
+    assert plain.truncated and plain.answer == 'best effort'
