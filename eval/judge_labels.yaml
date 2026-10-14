@@ -1,6 +1,7 @@
 # Label each claim. support: supported | partial | unsupported | not_a_claim  (is the claim backed by anything the
 # agent retrieved, shown below? numbers must match, and a company total does not support a claim about one product,
-# segment or region; a statement that a filing or metric is not available is backed by the tool error shown).
+# segment or region). not_a_claim also covers a statement about what is available: a filing, period or metric that is
+# not available or not reported, or a list of the filings that exist (even though a tool error confirms it).
 # addresses_question: yes | no  (does this claim help answer the question?).
 # Evidence for ids cited in the answer is shown in full (cut at 3000 characters); other retrieved passages as the
 # sentences most similar to the claim. The cited ids may not be the passages that support the claim: judge support
@@ -2007,9 +2008,9 @@
 
     Overall, NVIDIA is navigating a complex landscape of supply challenges influenced by regulatory changes, geopolitical
     factors, and the need for substantial infrastructure investments to meet growing demand.'
-  claim: government has already imposed licensing requirements that limit the ability of foreign firms to create large-scale
-    GPU clusters, which could impair NVIDIA's ability to sell its products and develop new ones not subject to these restrictions
-    [NVDA_2026-07-26_0045].
+  claim: The U.S. government has already imposed licensing requirements that limit the ability of foreign firms to create
+    large-scale GPU clusters, which could impair NVIDIA's ability to sell its products and develop new ones not subject to
+    these restrictions [NVDA_2026-07-26_0045].
   cited_in_paragraph:
   - NVDA_2026-07-26_0045
   evidence:
@@ -2337,7 +2338,7 @@
     impact of these tariffs remains uncertain and depends on various factors, including potential retaliatory measures from
     other countries and the overall economic environment [AAPL_2025-12-27_0007][AAPL_2025-12-27_0008].'
   claim: While the initial results of this investigation did not impose additional tariffs affecting Apple's products at that
-    time, the company acknowledged that various modifications to U.S.
+    time, the company acknowledged that various modifications to U.S. tariffs could occur in the future.
   cited_in_paragraph:
   - AAPL_2025-12-27_0007
   - AAPL_2025-12-27_0008

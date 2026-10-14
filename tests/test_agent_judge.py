@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from earnings_rag.agent_judge import (evidence_items, groundedness_messages, judge_run, parse_groundedness,
+from earnings_rag.agent_judge import (PROMPT_VERSION, evidence_items, groundedness_messages, judge_run, parse_groundedness,
                                       score_claim, split_claims)
 from earnings_rag.judge_labels import build, select
 from fakes import FakeClient, answer
@@ -27,9 +27,9 @@ def test_claims_are_numbered_sentences_and_keep_paragraph_citations():
     assert claims[2]['ids'] == [] and claims[3]['ids'] == ['NVDA_2025-01-26_0005']   # cited in the paragraph, not in this sentence
 
 
-def test_evidence_covers_passages_facts_calculations_and_errors_but_not_unparseable_results():
+def test_evidence_covers_passages_facts_and_calculations_but_not_errors_or_unparseable_results():
     items = evidence_items(TRACE)
-    assert set(items) == {'NVDA_2025-01-26_0005', 'AAPL_revenue_FY2026Q3', 'calc_1', 'search_filings_error_1'}
+    assert set(items) == {'NVDA_2025-01-26_0005', 'AAPL_revenue_FY2026Q3', 'calc_1'}
     assert 'DLSS boosts frame rates.' in items['NVDA_2025-01-26_0005']
     assert '109417' in items['AAPL_revenue_FY2026Q3'] and '1 + 1 = 2' in items['calc_1']
 
@@ -81,7 +81,7 @@ def test_judge_run_makes_two_calls_and_scores_each_claim():
     assert [c['verdict'] for c in result['claims']] == ['supported', 'supported', 'unsupported', 'partial']
     assert result['claims'][3]['citation_correct'] is True and result['claims'][0]['citation_correct'] is None
     assert result['relevance'] == 'partial' and result['off_topic_claims'] == [3]
-    assert (result['id'], result['run'], result['prompt_version']) == ('q', 2, 'v1')
+    assert (result['id'], result['run'], result['prompt_version']) == ('q', 2, PROMPT_VERSION)
 
 
 # --- the blind label sheet ---------------------------------------------------
@@ -120,12 +120,10 @@ def test_the_sheet_is_blind_and_unlabelled_and_the_metadata_has_the_strata():
     assert {m['split'] for m in meta} == {'dev', 'test'} and all('stratum' in m for m in meta)
 
 
-def test_tool_errors_are_evidence_for_claims_about_what_is_available():
+def test_tool_errors_are_not_evidence():
     trace = [{'tool': 'get_financials', 'result': '{"error": "COF does not report gross_profit. Available: revenue"}'},
              {'tool': 'search_filings', 'result': '{"error": "No FY2031 10-K. Filings with text: FY2025"}'}]
-    items = evidence_items(trace)
-    assert set(items) == {'get_financials_error_1', 'search_filings_error_2'}
-    assert 'does not report gross_profit' in items['get_financials_error_1']
+    assert evidence_items(trace) == {}
 
 
 def test_uncited_passages_show_the_sentences_most_like_the_claim():
@@ -156,3 +154,32 @@ def test_the_review_set_has_every_disagreement_and_a_seeded_sample_of_agreements
     a = review_set(['L03', 'L09'], ids, agreed_sample=5)
     assert a == review_set(['L03', 'L09'], ids, agreed_sample=5) and len(a) == 7 and {'L03', 'L09'} <= set(a)
     assert a == sorted(a)
+
+
+def test_abbreviations_do_not_end_a_claim():
+    claims = split_claims("The U.S. government imposed rules on Apple Inc. in 2025 [A_1]. Tariffs rose, e.g. in China.")
+    assert [c['text'] for c in claims] == ["The U.S. government imposed rules on Apple Inc. in 2025 [A_1].",
+                                           "Tariffs rose, e.g. in China."]
+    assert claims[0]['ids'] == ['A_1']
+
+
+def test_best_labels_prefer_the_human_and_ignore_blank_human_labels():
+    from earnings_rag.judge_agreement import best_labels
+    claude = {'L1': {'support': 'supported', 'addresses_question': 'yes'}, 'L2': {'support': 'supported', 'addresses_question': 'yes'}}
+    human = {'L1': {'support': 'unsupported', 'addresses_question': 'yes'}, 'L2': {'support': '', 'addresses_question': ''}}
+    best = best_labels(claude, human)
+    assert (best['L1']['support'], best['L1']['source']) == ('unsupported', 'human')
+    assert (best['L2']['support'], best['L2']['source']) == ('supported', 'claude')
+
+
+def test_final_report_scores_the_judge_against_the_human_where_there_is_one():
+    from earnings_rag.judge_agreement import final_report
+    mk = lambda s, a='yes': {'support': s, 'addresses_question': a}
+    claude = {'L1': mk('supported'), 'L2': mk('supported'), 'L3': mk('not_a_claim'), 'L4': mk('supported')}
+    human = {'L1': mk('unsupported'), 'L2': mk(''), 'L3': mk(''), 'L4': mk('supported')}
+    judged = {'L1': mk('supported'), 'L2': mk('supported'), 'L3': mk('not_a_claim'), 'L4': mk('supported')}
+    meta = {i: {'split': 'dev' if i in ('L1', 'L2') else 'test'} for i in claude}
+    r = final_report(claude, human, judged, meta)
+    assert r['reviewed'] == 2 and r['judge_vs_human']['support_agree'] == 0.5 and r['claude_vs_human']['support_agree'] == 0.5
+    assert r['judge_vs_best']['support_agree'] == 0.75 and r['judge_errors'] == [('L1', 'human', 'unsupported', 'supported')]
+    assert r['by_split']['dev']['n'] == 2 and r['by_split']['test']['n'] == 2

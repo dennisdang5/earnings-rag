@@ -17,7 +17,8 @@ SUPPORT = ('supported', 'partial', 'unsupported', 'not_a_claim')
 LABEL_HEADER = """\
 # Label each claim. support: supported | partial | unsupported | not_a_claim  (is the claim backed by anything the
 # agent retrieved, shown below? numbers must match, and a company total does not support a claim about one product,
-# segment or region; a statement that a filing or metric is not available is backed by the tool error shown).
+# segment or region). not_a_claim also covers a statement about what is available: a filing, period or metric that is
+# not available or not reported, or a list of the filings that exist (even though a tool error confirms it).
 # addresses_question: yes | no  (does this claim help answer the question?).
 # Evidence for ids cited in the answer is shown in full (cut at 3000 characters); other retrieved passages as the
 # sentences most similar to the claim. The cited ids may not be the passages that support the claim: judge support

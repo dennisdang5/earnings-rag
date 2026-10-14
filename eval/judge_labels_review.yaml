@@ -1,6 +1,7 @@
 # Label each claim. support: supported | partial | unsupported | not_a_claim  (is the claim backed by anything the
 # agent retrieved, shown below? numbers must match, and a company total does not support a claim about one product,
-# segment or region; a statement that a filing or metric is not available is backed by the tool error shown).
+# segment or region). not_a_claim also covers a statement about what is available: a filing, period or metric that is
+# not available or not reported, or a list of the filings that exist (even though a tool error confirms it).
 # addresses_question: yes | no  (does this claim help answer the question?).
 # Evidence for ids cited in the answer is shown in full (cut at 3000 characters); other retrieved passages as the
 # sentences most similar to the claim. The cited ids may not be the passages that support the claim: judge support
@@ -97,8 +98,8 @@
       we are unable to create and deliver a competitive product for wide distribution in China’s data center market with the
       approval from both the USG and the Chinese government. ... In May 2025, the USG announced that it would rescind the
       AI Diffusion IFR and implement a replacement rule.
-  support: ''
-  addresses_question: ''
+  support: supported
+  addresses_question: 'yes'
 - label_id: L02
   question: What does NVIDIA's 10-Q for Q2 fiscal 2030 say about export controls?
   answer: 'The filing for NVIDIA''s 10-Q for Q2 fiscal 2030 is not available. However, I found relevant information in NVIDIA''s
@@ -260,8 +261,8 @@
       bandwidth of a chip, and the memory bandwidth of a chip. ... In addition to controls targeting D:1, D:4 and D:5 countries,
       the USG has also imposed worldwide export controls impacting our products, and may impose additional controls in the
       future.
-  support: ''
-  addresses_question: ''
+  support: unsupported
+  addresses_question: 'no'
 - label_id: L05
   question: What does Capital One's annual report this year say about credit risk?
   answer: 'The filing asked for, Capital One''s FY2026 10-K, is not available. The information provided is from Capital One''s
@@ -390,8 +391,8 @@
   - id: COF_2025-12-31_0225
     cited_in_answer: false
     text: CAPITAL ONE FINANCIAL CORPORATION ... CAPITAL ONE FINANCIAL CORPORATION
-  support: ''
-  addresses_question: ''
+  support: not_a_claim
+  addresses_question: 'yes'
 - label_id: L09
   question: What did NVIDIA report last quarter about data center demand?
   answer: 'In NVIDIA''s Q2 FY2027 report, the company highlighted several key points regarding data center demand:
@@ -497,8 +498,8 @@
       to enable broader access to our data center infrastructure products to serve AI startups, model builders, enterprises,
       research organizations, and sovereign customers. ... We believe these AI cloud partners have strong customer demand
       and robust sales pipelines but are constrained by the large-scale infrastructure that is required to meet that demand.
-  support: ''
-  addresses_question: ''
+  support: supported
+  addresses_question: 'yes'
 - label_id: L10
   question: What did NVIDIA report last quarter about data center demand?
   answer: 'In NVIDIA''s Q2 FY2027 report, the company highlighted several key points regarding data center demand:
@@ -628,8 +629,8 @@
       workstation GPUs, we were effectively foreclosed from competing in China’s data center computing/compute market, and
       our effective foreclosure from the China market helped our competitors build larger developer and customer ecosystems
       to challenge us worldwide.
-  support: ''
-  addresses_question: ''
+  support: supported
+  addresses_question: 'no'
 - label_id: L11
   question: What does Apple's latest 10-Q say about tariffs?
   answer: 'In Apple''s latest 10-Q for Q3 FY2026, the company discusses tariffs and their potential impacts on its business.
@@ -729,8 +730,8 @@
       lower commission on such sales, or may not earn a commission at all, which can materially adversely affect the Company’s
       revenue, gross margin, results of operations, financial condition and stock price. ... The Company expects to make further
       business changes in the future.
-  support: ''
-  addresses_question: ''
+  support: supported
+  addresses_question: 'yes'
 - label_id: L15
   question: What does NVIDIA's most recent quarterly report say about export controls?
   answer: 'In NVIDIA''s most recent quarterly report (10-Q for Q2 FY2027), the company discusses the impact of export controls
@@ -886,8 +887,8 @@
       approval of both the USG and the Chinese government, our lost opportunity and the benefit to our competitors will have
       a material and adverse impact on our business, operating results, and financial condition. ... The IFR would have imposed
       a worldwide licensing requirement on our data center products, such as our H200, GB200 and GB300.
-  support: ''
-  addresses_question: ''
+  support: supported
+  addresses_question: 'no'
 - label_id: L18
   question: How did Apple's iPhone revenue in Q3 FY2026 compare with Q3 FY2025?
   answer: Apple's iPhone revenue in Q3 FY2026 was $109,417 million [AAPL_revenue_FY2026Q3], compared to $94,036 million in
@@ -910,8 +911,8 @@
   - id: calc_1
     cited_in_answer: true
     text: 'calculation: (109417 - 94036) / 94036 * 100 = 16.3565017653'
-  support: ''
-  addresses_question: ''
+  support: unsupported
+  addresses_question: 'yes'
 - label_id: L20
   question: What does NVIDIA's 10-Q for Q2 of next fiscal year say about supply?
   answer: 'The filing for NVIDIA''s 10-Q for Q2 FY2028 is not available. The following information is from NVIDIA''s 10-Q
@@ -941,9 +942,9 @@
 
     Overall, NVIDIA is navigating a complex landscape of supply challenges influenced by regulatory changes, geopolitical
     factors, and the need for substantial infrastructure investments to meet growing demand.'
-  claim: government has already imposed licensing requirements that limit the ability of foreign firms to create large-scale
-    GPU clusters, which could impair NVIDIA's ability to sell its products and develop new ones not subject to these restrictions
-    [NVDA_2026-07-26_0045].
+  claim: The U.S. government has already imposed licensing requirements that limit the ability of foreign firms to create
+    large-scale GPU clusters, which could impair NVIDIA's ability to sell its products and develop new ones not subject to
+    these restrictions [NVDA_2026-07-26_0045].
   cited_in_paragraph:
   - NVDA_2026-07-26_0045
   evidence:
@@ -1253,8 +1254,8 @@
       originate or purchase, as well as the quality and range of our customer service, products, innovation and experience,
       and, with respect to our payment network businesses, the strength, reach, pricing and capabilities of our network offerings
       to merchants, acquirers and issuers.
-  support: ''
-  addresses_question: ''
+  support: supported
+  addresses_question: 'yes'
 - label_id: L23
   question: How does NVIDIA use AI to improve frame rates in games?
   answer: 'NVIDIA utilizes AI to enhance frame rates in games primarily through its deep learning super sampling technology,
@@ -1323,8 +1324,8 @@
       now a data center scale AI infrastructure company reshaping all industries. ... Our technology stack includes the foundational
       NVIDIA CUDA development platform that runs on all NVIDIA GPUs, as well as hundreds of domain-specific software libraries,
       frameworks, algorithms, software development kits, or SDKs, and application programming interfaces, or APIs.
-  support: ''
-  addresses_question: ''
+  support: supported
+  addresses_question: 'yes'
 - label_id: L24
   question: What was Capital One's gross profit in 2024?
   answer: Capital One does not report gross profit. The available financial metrics for Capital One include revenue, net income,
@@ -1336,8 +1337,8 @@
   - id: get_financials_error_1
     cited_in_answer: false
     text: 'get_financials returned an error: COF does not report gross_profit.'
-  support: ''
-  addresses_question: ''
+  support: not_a_claim
+  addresses_question: 'yes'
 - label_id: L25
   question: What does Apple's fiscal 2031 10-K say about competition?
   answer: Apple's fiscal 2031 10-K is not available. The most recent filings with text are Apple's 10-K for FY2025 (ended
@@ -1351,16 +1352,16 @@
     cited_in_answer: false
     text: 'search_filings returned an error: No filing matches those filters, so the filing asked for is not available. ...
       Filings with text: AAPL: 10-Q Q1 FY2022-Q3 FY2026 (15); 10-K FY2022-FY2025 (4)'
-  support: ''
-  addresses_question: ''
+  support: not_a_claim
+  addresses_question: 'no'
 - label_id: L27
   question: What are Tesla's main risk factors?
   answer: The provided filings do not address this.
   claim: The provided filings do not address this.
   cited_in_paragraph: []
   evidence: []
-  support: ''
-  addresses_question: ''
+  support: not_a_claim
+  addresses_question: 'yes'
 - label_id: L29
   question: What did NVIDIA report last quarter about data center demand?
   answer: 'In NVIDIA''s Q2 FY2027 report, the company highlighted several key points regarding data center demand:
@@ -1488,8 +1489,8 @@
     cited_in_answer: false
     text: NVDA 10-Q Q2 FY2027, period 2026-07-26 ... The licenses require that the H200s go through an inspection process
       in the United States prior to any shipment to the customer.
-  support: ''
-  addresses_question: ''
+  support: supported
+  addresses_question: 'no'
 - label_id: L30
   question: How do Apple and Capital One each describe their competition risks?
   answer: '### Apple Inc. (AAPL) Competition Risks
@@ -1699,5 +1700,5 @@
       continue to incur financial risk, compliance obligations, litigation risk, or reputational risk, including as a result
       of assuming ongoing litigation disputes, claims, government agency investigations and enforcement actions and other
       proceedings associated with Discover’s actions prior to the Transaction.
-  support: ''
-  addresses_question: ''
+  support: supported
+  addresses_question: 'yes'

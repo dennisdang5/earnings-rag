@@ -26,8 +26,8 @@
 - {label_id: L21, support: supported, addresses_question: 'yes', note: 'supported by COF_0072 (retrieved, not cited); the cited id 0094 is climate-risk text, so the citation is wrong'}
 - {label_id: L22, support: supported, addresses_question: 'yes'}
 - {label_id: L23, support: supported, addresses_question: 'no', note: 'ray tracing is not AI frame rates; borderline'}
-- {label_id: L24, support: supported, addresses_question: 'yes', note: 'backed by the get_financials error result, which the judge evidence omitted (fixed in agent_judge)'}
-- {label_id: L25, support: supported, addresses_question: 'yes', note: 'backed by the search_filings error result listing available filings (same gap)'}
+- {label_id: L24, support: not_a_claim, addresses_question: 'yes', note: 'a statement about what the metrics tool reports (availability): not_a_claim by the rule settled on 2026-10-14'}
+- {label_id: L25, support: not_a_claim, addresses_question: 'yes', note: 'a statement about which filings exist (availability): not_a_claim by the rule settled on 2026-10-14'}
 - {label_id: L26, support: supported, addresses_question: 'yes'}
 - {label_id: L27, support: not_a_claim, addresses_question: 'yes', note: 'correct refusal of an out-of-scope company'}
 - {label_id: L28, support: not_a_claim, addresses_question: 'yes', note: 'a heading'}

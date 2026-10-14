@@ -9,10 +9,17 @@ import re
 from earnings_rag.agent.citations import _cited_ids, _sentences
 from earnings_rag.config import settings
 
-PROMPT_VERSION = 'v1'
+PROMPT_VERSION = 'v2'
 VERDICTS = ('supported', 'partial', 'unsupported', 'not_a_claim')
 SUPPORT_LABELS = VERDICTS
 RELEVANCE = ('answers', 'partial', 'off_topic')
+
+
+# A period after these does not end a sentence. "The U.S. government ..." was cut into "The U.S." and "government ...",
+# and the fragment was labelled by hand as not a claim (validation sheet L20, L22). Two sentences merged by mistake are
+# harmless to a judge; a fragment is not.
+ABBREVIATION = re.compile(r'\b(?:U\.S|U\.K|e\.g|i\.e|Inc|Corp|Co|Ltd|No|vs|Mr|Mrs|Dr)\.')
+DOT = '․'    # stands in for the period while sentences are split
 
 
 def split_claims(answer: str) -> list[dict]:
@@ -21,9 +28,9 @@ def split_claims(answer: str) -> list[dict]:
     sentence (`ids`) and in its paragraph (`paragraph_ids`); citation correctness is judged against the second.
     """
     claims = []
-    for paragraph in re.split(r'\n\s*\n', answer):
+    for paragraph in re.split(r'\n\s*\n', ABBREVIATION.sub(lambda m: m.group(0)[:-1] + DOT, answer)):
         paragraph_ids = _cited_ids(paragraph)
-        for sentence in _sentences(paragraph):
+        for sentence in (s.replace(DOT, '.') for s in _sentences(paragraph)):
             claims.append({'n': len(claims) + 1, 'text': sentence, 'ids': _cited_ids(sentence),
                            'paragraph_ids': paragraph_ids})
     return claims
@@ -31,13 +38,12 @@ def split_claims(answer: str) -> list[dict]:
 
 def evidence_items(trace: list[dict]) -> dict[str, str]:
     """
-    id -> text for everything the run's tools returned: passages, fact rows, calculations, and tool errors. Errors
-    ("Capital One does not report gross profit", "the filings with text are ...") back claims the answer makes about what
-    is available, so they get ids of their own (get_financials_error_1); without them the judge called those claims
-    unsupported (found labelling the validation sheet).
+    id -> text for what the run's tools returned as evidence: passages, fact rows and calculations. Tool errors are
+    deliberately not evidence. Statements about what is available ("Capital One does not report gross profit", "the
+    filings with text are ...") are scored not_a_claim; given the error as evidence, the judge called them supported
+    on 3 of 3 claims whatever the prompt said, and with no evidence it followed the not_a_claim rule 3 of 3.
     """
     items: dict[str, str] = {}
-    errors = 0
     for t in trace:
         try:
             data = json.loads(t['result'])
@@ -45,9 +51,6 @@ def evidence_items(trace: list[dict]) -> dict[str, str]:
             continue
         if not isinstance(data, dict):
             continue
-        if isinstance(data.get('error'), str):
-            errors += 1
-            items[f"{t['tool']}_error_{errors}"] = f"{t['tool']} returned an error: {data['error']}"
         if 'expression' in data and 'id' in data:
             items[data['id']] = f"calculation: {data['expression']} = {data.get('result')}"
         for r in data.get('results') or []:
@@ -67,7 +70,7 @@ For each numbered claim give one verdict:
 - supported: the evidence states it. Numbers must match (rounding to the precision written is fine), and the figure must be the one the claim is about: a company-wide total is NOT support for a claim about one product, segment or region.
 - partial: part of the claim is supported, or it is supported only loosely.
 - unsupported: no evidence supports it, or the evidence says something different.
-- not_a_claim: not a statement about the filings (a greeting, a statement that a filing is not available, a refusal).
+- not_a_claim: not a statement about the filings (a greeting, a statement that a filing, period or metric is not available or not reported, a list of the filings that exist, a refusal).
 Use only the evidence below, never outside knowledge. For supported and partial claims list the ids of the evidence items that support it and quote the supporting words (under 200 characters); for the others use an empty list and an empty quote.
 
 Reply with JSON only: {"claims": [{"n": 1, "verdict": "...", "evidence_ids": ["..."], "quote": "..."}, ...]} with one entry per claim, in order."""

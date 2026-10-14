@@ -59,3 +59,30 @@ def review_set(disagreements: list[str], all_ids: list[str], agreed_sample: int 
     agreed = [i for i in all_ids if i not in set(disagreements)]
     chosen = set(disagreements) | set(random.Random(seed).sample(agreed, min(agreed_sample, len(agreed))))
     return [i for i in all_ids if i in chosen]
+
+
+def best_labels(claude: dict[str, dict], human: dict[str, dict]) -> dict[str, dict]:
+    """The best known label per claim: the human's where there is one, otherwise Claude's. Human labels are blank
+    until filled in, and a blank one does not count."""
+    out = {i: {**e, 'source': 'claude'} for i, e in claude.items()}
+    out.update({i: {**e, 'source': 'human'} for i, e in human.items() if e.get('support')})
+    return out
+
+
+def final_report(claude: dict[str, dict], human: dict[str, dict], judged: dict[str, dict], meta: dict[str, dict]) -> dict:
+    """
+    How far the judge can be trusted, from three views: Claude against the human on the claims the human labelled
+    (does the substitute labeller hold up?), the judge against the human on those same claims, and the judge against
+    the best known label on all claims, per dev/test half. The human claims are not a random sample (they are the
+    disagreements plus a random sample of agreements), so the first two numbers describe hard claims.
+    """
+    reviewed = {i: e for i, e in human.items() if e.get('support')}
+    best = best_labels(claude, human)
+    report = {'reviewed': len(reviewed), 'claude_vs_human': compare(reviewed, {i: claude[i] for i in reviewed}),
+              'judge_vs_human': compare(reviewed, {i: judged[i] for i in reviewed}),
+              'judge_vs_best': compare(best, judged)}
+    report['by_split'] = {s: compare({i: best[i] for i in best if meta[i]['split'] == s},
+                                     {i: judged[i] for i in best if meta[i]['split'] == s}) for s in ('dev', 'test')}
+    report['judge_errors'] = [(i, best[i]['source'], best[i]['support'], judged[i]['support'])
+                              for i in report['judge_vs_best']['disagreements'] if best[i]['support'] != judged[i]['support']]
+    return report

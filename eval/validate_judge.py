@@ -45,6 +45,8 @@ def main() -> None:
 
     chosen = review_set(report['disagreements'], [e['label_id'] for e in sheet])
     review = [{**e, 'support': '', 'addresses_question': ''} for e in sheet if e['label_id'] in chosen]
+    if any(e.get('support') for e in (yaml.safe_load((REPO_ROOT / 'eval' / 'judge_labels_review.yaml').read_text(encoding='utf-8')) or [])):
+        raise SystemExit('eval/judge_labels_review.yaml already has human labels; not overwriting it')
     (REPO_ROOT / 'eval' / 'judge_labels_review.yaml').write_text(
         LABEL_HEADER + yaml.safe_dump(review, sort_keys=False, allow_unicode=True, width=120), encoding='utf-8')
     print(f'\n{len(review)} claims for the human to label -> eval/judge_labels_review.yaml '
