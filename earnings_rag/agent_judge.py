@@ -141,3 +141,36 @@ def judge_run(record: dict, client, model: str | None = None) -> dict:
     return {'id': record['id'], 'run': record['run'], 'prompt_version': PROMPT_VERSION, 'model': model,
             'claims': [score_claim(c, v, evidence) for c, v in zip(claims, verdicts)],
             'relevance': rel['verdict'], 'off_topic_claims': list(rel.get('off_topic_claims') or [])}
+
+
+def summarize_judged(judged: list[dict]) -> dict[str, dict]:
+    """
+    Per question id, from stored judge output (no model calls): grounded = supported / real claims (not_a_claim is
+    left out), citation_correct = correct / claims that cite something, and how many runs got each relevance verdict.
+    A rate is None when there is nothing to divide by.
+    """
+    by_id: dict[str, list[dict]] = {}
+    for j in judged:
+        by_id.setdefault(j['id'], []).append(j)
+    out = {}
+    for qid, runs in by_id.items():
+        claims = [c for j in runs for c in j['claims'] if c['verdict'] != 'not_a_claim']
+        cited = [c for c in claims if c['citation_correct'] is not None]
+        out[qid] = {
+            'runs': len(runs), 'claims': len(claims),
+            'grounded': sum(c['grounded'] for c in claims) / len(claims) if claims else None,
+            'citation_correct': sum(c['citation_correct'] for c in cited) / len(cited) if cited else None,
+            'relevance': {v: sum(j['relevance'] == v for j in runs) for v in RELEVANCE},
+        }
+    return out
+
+
+def format_judged(summary: dict[str, dict]) -> str:
+    def pct(x):
+        return '  n/a' if x is None else f'{x:4.0%}'
+    lines = [f'{"question":38} {"claims":>6} {"grounded":>8} {"cit.ok":>6}  relevance (answers/partial/off_topic)']
+    for qid, s in summary.items():
+        r = s['relevance']
+        lines.append(f'{qid[:38]:38} {s["claims"]:>6} {pct(s["grounded"]):>8} {pct(s["citation_correct"]):>6}  '
+                     f'{r["answers"]}/{r["partial"]}/{r["off_topic"]}')
+    return '\n'.join(lines)

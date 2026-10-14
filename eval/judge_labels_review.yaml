@@ -1049,8 +1049,8 @@
       and services to customers in all markets worldwide, which could also substantially reduce our revenue. ... In August
       2022, the USG announced export restrictions and export licensing requirements targeting China’s semiconductor and supercomputing
       industries.
-  support: ''
-  addresses_question: ''
+  support: 'supported'
+  addresses_question: 'yes'
 - label_id: L21
   question: How do Apple and Capital One each describe their competition risks?
   answer: '### Apple Inc. (AAPL) Competition Risks

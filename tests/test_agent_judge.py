@@ -183,3 +183,22 @@ def test_final_report_scores_the_judge_against_the_human_where_there_is_one():
     assert r['reviewed'] == 2 and r['judge_vs_human']['support_agree'] == 0.5 and r['claude_vs_human']['support_agree'] == 0.5
     assert r['judge_vs_best']['support_agree'] == 0.75 and r['judge_errors'] == [('L1', 'human', 'unsupported', 'supported')]
     assert r['by_split']['dev']['n'] == 2 and r['by_split']['test']['n'] == 2
+
+
+def test_summarize_judged_rates_and_relevance():
+    from earnings_rag.agent_judge import summarize_judged
+
+    def claim(verdict, cc=None):
+        return {'verdict': verdict, 'grounded': verdict == 'supported', 'citation_correct': cc}
+
+    judged = [
+        {'id': 'q', 'run': 1, 'relevance': 'answers',
+         'claims': [claim('supported', True), claim('unsupported', False), claim('not_a_claim')]},
+        {'id': 'q', 'run': 2, 'relevance': 'partial', 'claims': [claim('supported', None)]},
+        {'id': 'empty', 'run': 1, 'relevance': 'answers', 'claims': [claim('not_a_claim')]},
+    ]
+    s = summarize_judged(judged)
+    assert s['q']['claims'] == 3 and s['q']['grounded'] == 2 / 3
+    assert s['q']['citation_correct'] == 0.5
+    assert s['q']['relevance'] == {'answers': 1, 'partial': 1, 'off_topic': 0}
+    assert s['empty']['grounded'] is None and s['empty']['citation_correct'] is None
