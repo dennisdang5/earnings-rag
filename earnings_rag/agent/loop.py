@@ -1,6 +1,7 @@
 import json
 from dataclasses import dataclass, field
 from datetime import date
+from typing import Callable
 
 from earnings_rag.agent.citations import check_citations, check_missing_filings, revision_request
 from earnings_rag.agent.tools import Tool, DEFAULT_TOOLS
@@ -144,7 +145,8 @@ def missing_filing(result: str) -> dict | None:
 def run_agent(question: str, client, tools: list[Tool] | None = None,
               max_steps: int | None = None, model: str | None = None, context: str | None = None,
               filings: list[dict] | None = None, today: date | None = None,
-              slices: dict[str, dict[str, str]] | None = None, max_tokens: int | None = None) -> AgentResult:
+              slices: dict[str, dict[str, str]] | None = None, max_tokens: int | None = None,
+              on_event: Callable[[dict], None] | None = None) -> AgentResult:
     """
     The whole agent: call the model; if it asks for tools, run them, append the results, and call it again.
     Stops when the model answers without asking for a tool, or when the step budget is spent.
@@ -155,6 +157,11 @@ def run_agent(question: str, client, tools: list[Tool] | None = None,
     call) default to the settings and are parameters so the eval sweep does not touch global settings. `filings`
     (text_periods() rows, default: the database), `slices` (slice_names(), same) and `today` are parameters so tests
     can fix them.
+
+    `on_event` is called with a dict as the run progresses, so a caller can show it live (api.py streams them):
+    start (resolved_periods), model_call (step; forced=True for the final tool-free call), tool_call (step, tool,
+    arguments), tool_result (step, tool, result, new_results), revising (problems). The answer is not an event: it is
+    the return value, sent only after the checks. An exception raised by on_event stops the run.
     """
     filings = text_periods() if filings is None else filings
     slices = slice_names() if slices is None else slices
@@ -184,6 +191,10 @@ def run_agent(question: str, client, tools: list[Tool] | None = None,
     revised = False
     force_tool = False   # the revision turn must call a tool when it was sent back for a slice
 
+    def emit(kind: str, **data) -> None:
+        if on_event is not None:
+            on_event({'type': kind, **data})
+
     def check(answer: str) -> dict:
         return {**check_citations(answer, seen_ids, values, computed, slices),
                 'unacknowledged_missing': check_missing_filings(answer, asked, missing)}
@@ -198,7 +209,9 @@ def run_agent(question: str, client, tools: list[Tool] | None = None,
                       'output': response.usage.completion_tokens, 'finish_reason': choice.finish_reason})
         return choice
 
+    emit('start', resolved_periods=resolved)
     for step in range(1, max_steps + 1):
+        emit('model_call', step=step)
         choice = call_model(tool_choice='required') if force_tool else call_model()
         force_tool = False
         msg = choice.message
@@ -213,12 +226,14 @@ def run_agent(question: str, client, tools: list[Tool] | None = None,
                 force_tool = bool(problems.get('slice_mismatch'))
                 messages.append({'role': 'assistant', 'content': msg.content})
                 messages.append({'role': 'user', 'content': revision_request(problems)})
+                emit('revising', problems={k: v for k, v in problems.items() if v})
                 continue
             return AgentResult(answer=msg.content or '', trace=trace, usage=usage, steps=step,
                                cut_off=choice.finish_reason == 'length', revised=revised, resolved_periods=resolved, **problems)
 
         messages.append(_assistant_message(msg))
         for tc in msg.tool_calls:
+            emit('tool_call', step=step, tool=tc.function.name, arguments=tc.function.arguments)
             tool = by_name.get(tc.function.name)
             if tool is None:
                 result = f'{{"error": "Unknown tool {tc.function.name}"}}'
@@ -233,8 +248,10 @@ def run_agent(question: str, client, tools: list[Tool] | None = None,
             trace.append({'step': step, 'tool': tc.function.name, 'arguments': tc.function.arguments,
                           'result': result, 'new_results': new_results})
             messages.append({'role': 'tool', 'tool_call_id': tc.id, 'content': result})
+            emit('tool_result', step=step, tool=tc.function.name, result=result, new_results=new_results)
 
     # Budget spent. A partial answer from what it has gathered beats an error, so forbid further tool calls.
+    emit('model_call', step=max_steps + 1, forced=True)
     choice = call_model(tool_choice='none')
     answer = choice.message.content or ''
     return AgentResult(answer=answer, trace=trace, usage=usage, steps=max_steps, truncated=True,
