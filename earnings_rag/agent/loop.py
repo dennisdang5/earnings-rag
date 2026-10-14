@@ -144,15 +144,17 @@ def missing_filing(result: str) -> dict | None:
 def run_agent(question: str, client, tools: list[Tool] | None = None,
               max_steps: int | None = None, model: str | None = None, context: str | None = None,
               filings: list[dict] | None = None, today: date | None = None,
-              slices: dict[str, dict[str, str]] | None = None) -> AgentResult:
+              slices: dict[str, dict[str, str]] | None = None, max_tokens: int | None = None) -> AgentResult:
     """
     The whole agent: call the model; if it asks for tools, run them, append the results, and call it again.
     Stops when the model answers without asking for a tool, or when the step budget is spent.
 
     `client` is anything with the OpenAI `chat.completions.create` interface, so tests can pass a scripted fake.
     `context` is appended to the system prompt; None builds date_context, '' adds nothing. Relative periods in the
-    question are resolved in code and noted beside it (periods.py). `filings` (text_periods() rows, default: the
-    database), `slices` (slice_names(), same) and `today` are parameters so tests can fix them.
+    question are resolved in code and noted beside it (periods.py). `max_steps` and `max_tokens` (output cap per model
+    call) default to the settings and are parameters so the eval sweep does not touch global settings. `filings`
+    (text_periods() rows, default: the database), `slices` (slice_names(), same) and `today` are parameters so tests
+    can fix them.
     """
     filings = text_periods() if filings is None else filings
     slices = slice_names() if slices is None else slices
@@ -164,6 +166,7 @@ def run_agent(question: str, client, tools: list[Tool] | None = None,
     asked = question + ('\n\n' + period_note(resolved, today) if resolved else '')
     tools = tools if tools is not None else DEFAULT_TOOLS
     max_steps = max_steps if max_steps is not None else settings.agent_max_steps
+    max_tokens = max_tokens if max_tokens is not None else settings.agent_max_tokens
     model = model or settings.llm_model
 
     by_name = {t.name: t for t in tools}
@@ -187,7 +190,7 @@ def run_agent(question: str, client, tools: list[Tool] | None = None,
 
     def call_model(**extra):
         response = client.chat.completions.create(
-            model=model, max_tokens=settings.agent_max_tokens, temperature=0,
+            model=model, max_tokens=max_tokens, temperature=0,
             messages=messages, tools=schemas, **extra,
         )
         choice = response.choices[0]
