@@ -1,0 +1,35 @@
+# Labels for eval/judge_labels.yaml written by Claude (Opus 5.5) BEFORE running the judge and without reading
+# eval/judge_labels_meta.json. Used to triage which claims the human labeller (the user) needs to adjudicate:
+# every claim where these labels and the gpt-4o judge disagree, plus a random sample where they agree.
+# support: is the claim backed by anything the agent retrieved (checked against the full text of every retrieved item,
+# not only the sheet's excerpts). addresses_question: does this claim help answer the question.
+- {label_id: L01, support: partial, addresses_question: 'yes', note: 'the passage says the AI cloud partners are constrained by infrastructure, not the startups and enterprises'}
+- {label_id: L02, support: supported, addresses_question: 'yes', note: 'supply chain disruption is in 0040; Europe and Latin America are in 0046 (the cited id is 0040)'}
+- {label_id: L03, support: supported, addresses_question: 'yes'}
+- {label_id: L04, support: supported, addresses_question: 'yes'}
+- {label_id: L05, support: not_a_claim, addresses_question: 'yes', note: 'a filing is not available'}
+- {label_id: L06, support: supported, addresses_question: 'yes'}
+- {label_id: L07, support: supported, addresses_question: 'yes'}
+- {label_id: L08, support: supported, addresses_question: 'yes'}
+- {label_id: L09, support: supported, addresses_question: 'yes', note: 'summary sentence; robust demand is backed by +117% revenue and strong customer demand'}
+- {label_id: L10, support: supported, addresses_question: 'yes'}
+- {label_id: L11, support: supported, addresses_question: 'yes'}
+- {label_id: L12, support: supported, addresses_question: 'yes'}
+- {label_id: L13, support: supported, addresses_question: 'yes'}
+- {label_id: L14, support: supported, addresses_question: 'yes'}
+- {label_id: L15, support: supported, addresses_question: 'no', note: 'the passage says these restrictions are in addition to export controls; borderline'}
+- {label_id: L16, support: supported, addresses_question: 'yes'}
+- {label_id: L17, support: supported, addresses_question: 'yes'}
+- {label_id: L18, support: unsupported, addresses_question: 'yes', note: 'the figures are Apple total revenue, not iPhone; on topic but wrong'}
+- {label_id: L19, support: supported, addresses_question: 'no', note: 'a cut-off fragment; supported by COF_0093 (not cited), which the sheet showed only as a preview; not a competition risk'}
+- {label_id: L20, support: supported, addresses_question: 'no', note: 'about export-control licensing, not supply; borderline'}
+- {label_id: L21, support: supported, addresses_question: 'yes', note: 'supported by COF_0072 (retrieved, not cited); the cited id 0094 is climate-risk text, so the citation is wrong'}
+- {label_id: L22, support: supported, addresses_question: 'yes'}
+- {label_id: L23, support: supported, addresses_question: 'no', note: 'ray tracing is not AI frame rates; borderline'}
+- {label_id: L24, support: not_a_claim, addresses_question: 'yes', note: 'a statement about what the metrics tool reports (availability): not_a_claim by the rule settled on 2026-10-14'}
+- {label_id: L25, support: not_a_claim, addresses_question: 'yes', note: 'a statement about which filings exist (availability): not_a_claim by the rule settled on 2026-10-14'}
+- {label_id: L26, support: supported, addresses_question: 'yes'}
+- {label_id: L27, support: not_a_claim, addresses_question: 'yes', note: 'correct refusal of an out-of-scope company'}
+- {label_id: L28, support: not_a_claim, addresses_question: 'yes', note: 'a heading'}
+- {label_id: L29, support: supported, addresses_question: 'yes'}
+- {label_id: L30, support: supported, addresses_question: 'no', note: 'IP protection availability by country; borderline as a competition risk'}

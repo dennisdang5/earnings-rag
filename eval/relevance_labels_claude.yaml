@@ -1,0 +1,17 @@
+# Answer-level relevance labels drafted by Claude (2026-10-14), for the human to adjudicate. Source: eval/runs/baseline-main.jsonl.
+# Rubric = the judge's own (earnings_rag/agent_judge.py RELEVANCE_INSTRUCTIONS): answers / partial (addresses part, or mixes in
+# material about other topics) / off_topic. A statement that the requested filing is not available counts as `answers`.
+# Caveat: Claude had already seen the judge's per-question verdicts when labelling, so this is not a blind set; the human's
+# labels (eval/relevance_labels_review.yaml, to be written) are the ones that count. `borderline: true` marks the calls to look at first.
+- {id: frame-rates, run: 1, label: answers, borderline: true, note: 'DLSS is the direct answer; the RTX ray-tracing sentence is tangential but short'}
+- {id: tesla-risks, run: 1, label: answers, note: 'correct refusal of an out-of-scope company'}
+- {id: nvda-export-controls-annual, run: 1, label: answers, note: 'five points, all on export controls'}
+- {id: nvda-last-quarter-dc, run: 1, label: answers, note: 'revenue growth, deployment constraints and AI cloud demand are all data center demand'}
+- {id: nvda-q2-fy2030, run: 1, label: answers, borderline: true, note: 'by the rule (filing not available, asked about that filing); it only offers to search others'}
+- {id: aapl-fy2031-10k, run: 1, label: answers, borderline: true, note: 'same as nvda-q2-fy2030'}
+- {id: nvda-q2-next-fy, run: 1, label: partial, borderline: true, note: 'says Q2 FY2028 is unavailable (counts as answering), then adds a different filing the user did not ask for, mostly export controls rather than supply'}
+- {id: aapl-last-quarter, run: 1, label: answers}
+- {id: cof-annual-report-this-year, run: 1, label: answers, borderline: true, note: 'FY2026 not available, answers from FY2025, which is the intended reading; every point is about credit risk'}
+- {id: cof-gross-profit-2024, run: 1, label: answers, note: 'says the company does not report it, lists what it does report'}
+- {id: nvda-revenue-fy2022-2025, run: 2, label: answers}
+- {id: aapl-cof-competition, run: 1, label: partial, note: 'IP, market volatility and reputational/Community Benefits Plan items are not competition risks (known drift)'}

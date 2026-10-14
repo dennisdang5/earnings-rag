@@ -1,0 +1,272 @@
+[
+ {
+  "label_id": "L01",
+  "stratum": "flagged",
+  "split": "dev",
+  "question_id": "nvda-last-quarter-dc",
+  "run": 3,
+  "claim_n": 7,
+  "has_figure": false
+ },
+ {
+  "label_id": "L02",
+  "stratum": "clean",
+  "split": "dev",
+  "question_id": "nvda-q2-fy2030",
+  "run": 3,
+  "claim_n": 13,
+  "has_figure": false
+ },
+ {
+  "label_id": "L03",
+  "stratum": "clean",
+  "split": "test",
+  "question_id": "aapl-last-quarter",
+  "run": 1,
+  "claim_n": 2,
+  "has_figure": false
+ },
+ {
+  "label_id": "L04",
+  "stratum": "clean",
+  "split": "dev",
+  "question_id": "nvda-aapl-net-income-fy2025",
+  "run": 1,
+  "claim_n": 1,
+  "has_figure": true
+ },
+ {
+  "label_id": "L05",
+  "stratum": "refusal",
+  "split": "dev",
+  "question_id": "cof-annual-report-this-year",
+  "run": 2,
+  "claim_n": 1,
+  "has_figure": false
+ },
+ {
+  "label_id": "L06",
+  "stratum": "clean",
+  "split": "test",
+  "question_id": "nvda-eps-fy2025",
+  "run": 3,
+  "claim_n": 1,
+  "has_figure": true
+ },
+ {
+  "label_id": "L07",
+  "stratum": "clean",
+  "split": "test",
+  "question_id": "nvda-revenue-fy2022-2025",
+  "run": 1,
+  "claim_n": 2,
+  "has_figure": true
+ },
+ {
+  "label_id": "L08",
+  "stratum": "clean",
+  "split": "dev",
+  "question_id": "net-income-latest-fy-all",
+  "run": 1,
+  "claim_n": 3,
+  "has_figure": true
+ },
+ {
+  "label_id": "L09",
+  "stratum": "clean",
+  "split": "dev",
+  "question_id": "nvda-last-quarter-dc",
+  "run": 3,
+  "claim_n": 10,
+  "has_figure": false
+ },
+ {
+  "label_id": "L10",
+  "stratum": "flagged",
+  "split": "test",
+  "question_id": "nvda-last-quarter-dc",
+  "run": 1,
+  "claim_n": 6,
+  "has_figure": false
+ },
+ {
+  "label_id": "L11",
+  "stratum": "clean",
+  "split": "test",
+  "question_id": "aapl-tariffs-latest-q",
+  "run": 2,
+  "claim_n": 14,
+  "has_figure": false
+ },
+ {
+  "label_id": "L12",
+  "stratum": "flagged",
+  "split": "dev",
+  "question_id": "nvda-last-quarter-dc",
+  "run": 2,
+  "claim_n": 7,
+  "has_figure": false
+ },
+ {
+  "label_id": "L13",
+  "stratum": "clean",
+  "split": "test",
+  "question_id": "nvda-dc-growth-fy2025",
+  "run": 2,
+  "claim_n": 1,
+  "has_figure": true
+ },
+ {
+  "label_id": "L14",
+  "stratum": "clean",
+  "split": "dev",
+  "question_id": "cof-annual-report-this-year",
+  "run": 2,
+  "claim_n": 10,
+  "has_figure": false
+ },
+ {
+  "label_id": "L15",
+  "stratum": "clean",
+  "split": "dev",
+  "question_id": "nvda-export-controls-latest-q",
+  "run": 1,
+  "claim_n": 8,
+  "has_figure": false
+ },
+ {
+  "label_id": "L16",
+  "stratum": "clean",
+  "split": "test",
+  "question_id": "aapl-tariffs-yoy",
+  "run": 2,
+  "claim_n": 7,
+  "has_figure": false
+ },
+ {
+  "label_id": "L17",
+  "stratum": "clean",
+  "split": "dev",
+  "question_id": "aapl-gross-margin-fy2024",
+  "run": 3,
+  "claim_n": 1,
+  "has_figure": true
+ },
+ {
+  "label_id": "L18",
+  "stratum": "slice_error",
+  "split": "dev",
+  "question_id": "aapl-iphone-q3-yoy",
+  "run": 3,
+  "claim_n": 1,
+  "has_figure": true
+ },
+ {
+  "label_id": "L19",
+  "stratum": "drift",
+  "split": "test",
+  "question_id": "aapl-cof-competition",
+  "run": 3,
+  "claim_n": 21,
+  "has_figure": false
+ },
+ {
+  "label_id": "L20",
+  "stratum": "clean",
+  "split": "test",
+  "question_id": "nvda-q2-next-fy",
+  "run": 2,
+  "claim_n": 12,
+  "has_figure": false
+ },
+ {
+  "label_id": "L21",
+  "stratum": "drift",
+  "split": "test",
+  "question_id": "aapl-cof-competition",
+  "run": 3,
+  "claim_n": 17,
+  "has_figure": false
+ },
+ {
+  "label_id": "L22",
+  "stratum": "clean",
+  "split": "dev",
+  "question_id": "aapl-10q-year-ago",
+  "run": 3,
+  "claim_n": 7,
+  "has_figure": false
+ },
+ {
+  "label_id": "L23",
+  "stratum": "clean",
+  "split": "dev",
+  "question_id": "frame-rates",
+  "run": 3,
+  "claim_n": 3,
+  "has_figure": false
+ },
+ {
+  "label_id": "L24",
+  "stratum": "clean",
+  "split": "test",
+  "question_id": "cof-gross-profit-2024",
+  "run": 3,
+  "claim_n": 1,
+  "has_figure": false
+ },
+ {
+  "label_id": "L25",
+  "stratum": "clean",
+  "split": "test",
+  "question_id": "aapl-fy2031-10k",
+  "run": 2,
+  "claim_n": 2,
+  "has_figure": false
+ },
+ {
+  "label_id": "L26",
+  "stratum": "clean",
+  "split": "dev",
+  "question_id": "nvda-export-controls-annual",
+  "run": 3,
+  "claim_n": 7,
+  "has_figure": false
+ },
+ {
+  "label_id": "L27",
+  "stratum": "refusal",
+  "split": "test",
+  "question_id": "tesla-risks",
+  "run": 3,
+  "claim_n": 1,
+  "has_figure": false
+ },
+ {
+  "label_id": "L28",
+  "stratum": "drift",
+  "split": "dev",
+  "question_id": "aapl-cof-competition",
+  "run": 3,
+  "claim_n": 13,
+  "has_figure": false
+ },
+ {
+  "label_id": "L29",
+  "stratum": "flagged",
+  "split": "test",
+  "question_id": "nvda-last-quarter-dc",
+  "run": 1,
+  "claim_n": 10,
+  "has_figure": false
+ },
+ {
+  "label_id": "L30",
+  "stratum": "drift",
+  "split": "dev",
+  "question_id": "aapl-cof-competition",
+  "run": 1,
+  "claim_n": 10,
+  "has_figure": false
+ }
+]
