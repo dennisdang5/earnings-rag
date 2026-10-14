@@ -18,7 +18,7 @@
   run: 1
   question: What are Tesla's main risk factors?
   answer: The provided filings do not address this.
-  label: ''
+  label: 'answers'
 - id: nvda-export-controls-annual
   run: 1
   question: How do export controls affect NVIDIA's business?
@@ -56,7 +56,7 @@
 
     Overall, the evolving landscape of export controls poses substantial challenges for NVIDIA, affecting their market access,
     competitive dynamics, and operational costs.'
-  label: ''
+  label: 'answers'
 - id: nvda-last-quarter-dc
   run: 1
   question: What did NVIDIA report last quarter about data center demand?
@@ -81,7 +81,7 @@
 
     Overall, while NVIDIA reported significant growth in data center revenue, they also acknowledged the challenges posed
     by infrastructure limitations and capital constraints that could affect future demand and deployment.'
-  label: ''
+  label: 'answers'
 - id: nvda-q2-fy2030
   run: 1
   question: What does NVIDIA's 10-Q for Q2 fiscal 2030 say about export controls?
@@ -131,7 +131,7 @@
   answer: In Apple's last quarterly report (10-Q for Q3 FY2026), it was noted that services net sales increased during the
     third quarter and the first nine months of 2026 compared to the same periods in 2025. This growth was primarily attributed
     to higher net sales from advertising and cloud services [AAPL_2026-06-27_0010].
-  label: ''
+  label: 'answers'
 - id: cof-annual-report-this-year
   run: 1
   question: What does Capital One's annual report this year say about credit risk?
@@ -174,7 +174,7 @@
   answer: Capital One does not report gross profit. The available financial metrics for Capital One include revenue, net income,
     diluted EPS, operating cash flow, pretax income, net interest income, noninterest income, noninterest expense, provision
     for credit losses, loans, and deposits.
-  label: ''
+  label: 'answers'
 - id: nvda-revenue-fy2022-2025
   run: 2
   question: What was NVIDIA's revenue each year from fiscal 2022 to fiscal 2025?
@@ -188,7 +188,7 @@
     - **Fiscal Year 2024**: $60,922 million [NVDA_revenue_FY2024]
 
     - **Fiscal Year 2025**: $130,497 million [NVDA_revenue_FY2025]'
-  label: ''
+  label: 'answers'
 - id: aapl-cof-competition
   run: 1
   question: How do Apple and Capital One each describe their competition risks?
@@ -237,4 +237,4 @@
 
     3. **Reputational Risks**: The company highlights the potential for reputational damage if it fails to meet stakeholder
     expectations, particularly in relation to its commitments, such as the Community Benefits Plan associated with its'
-  label: ''
+  label: 'answers'

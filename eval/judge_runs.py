@@ -15,6 +15,10 @@ from earnings_rag.agent_judge import PROMPT_VERSION, judge_run
 from earnings_rag.llm import _llm
 
 
+def write_cache(path: Path, cache: dict) -> None:
+    path.write_text(''.join(json.dumps(r) + '\n' for r in cache.values()), encoding='utf-8')
+
+
 def main() -> None:
     if len(sys.argv) != 2:
         raise SystemExit(__doc__)
@@ -35,8 +39,12 @@ def main() -> None:
             except ValueError as e:
                 print(f"! {key}: {e}")
                 continue
+            except Exception as e:   # API failure (quota, network): keep what is judged so far
+                print(f"! stopped at {key}: {e}")
+                break
+            write_cache(cache_path, cache)
         judged.append((rec, cache[key]))
-    cache_path.write_text(''.join(json.dumps(r) + '\n' for r in cache.values()), encoding='utf-8')
+    write_cache(cache_path, cache)
 
     counts: dict[str, int] = {}
     for rec, j in judged:

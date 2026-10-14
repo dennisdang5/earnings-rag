@@ -9,7 +9,7 @@ import re
 from earnings_rag.agent.citations import _cited_ids, _sentences
 from earnings_rag.config import settings
 
-PROMPT_VERSION = 'v2'
+PROMPT_VERSION = 'v3'
 VERDICTS = ('supported', 'partial', 'unsupported', 'not_a_claim')
 SUPPORT_LABELS = VERDICTS
 RELEVANCE = ('answers', 'partial', 'off_topic')
@@ -77,7 +77,10 @@ Reply with JSON only: {"claims": [{"n": 1, "verdict": "...", "evidence_ids": [".
 
 RELEVANCE_INSTRUCTIONS = """You judge whether an answer addresses a question. You do not know whether the answer is true.
 
-Verdict: answers (it addresses what was asked), partial (it addresses part of it, or mixes in material about other topics), off_topic (it does not address it). A statement that the requested filing is not available counts as answers when the question asked about that filing. List the numbers of any claims that do not address the question.
+Verdict: answers (it addresses what was asked), partial (a real part of what was asked is missing, or a substantial part of the answer is about other topics), off_topic (it does not address it).
+These count as answers: a statement that the requested filing or figure is not available, with or without the most recent available filing as a fallback; a short refusal of a company or topic the system does not cover; an answer whose points are all things the sources discuss under the question's topic, even if you would not have chosen them. A sentence that is related but tangential does not make an answer partial.
+You cannot check dates or whether the right filing was chosen for a relative period such as "a year ago" or "last quarter"; judge only whether the content is about what was asked.
+List the numbers of any claims that do not address the question.
 
 Reply with JSON only: {"verdict": "...", "off_topic_claims": [1, 2]}"""
 
