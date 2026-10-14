@@ -1,0 +1,240 @@
+# Human relevance labels. Fill `label` with answers | partial | off_topic. answers = addresses what was asked;
+# partial = addresses part or mixes in other topics; off_topic = does not address it. A filing-not-available statement, with or
+# without the most recent filing as a fallback, counts as answers. Five entries were prefilled from your remarks; confirm or change.
+- id: frame-rates
+  run: 1
+  question: How does NVIDIA use AI to improve frame rates in games?
+  answer: "NVIDIA utilizes AI to enhance frame rates in games primarily through its deep learning super sampling technology,\
+    \ known as NVIDIA DLSS. This AI-driven technology boosts frame rates while generating high-quality, sharp images for gaming.\
+    \ The implementation of NVIDIA RTX technology, which includes ray tracing for real-time rendering, further enhances the\
+    \ gaming experience by providing cinematic-quality graphics. \n\nIn fiscal year 2025, NVIDIA introduced the Blackwell\
+    \ architecture, which combines AI models with traditional rendering techniques to significantly improve game performance,\
+    \ image quality, and interactivity. This architecture also features an advanced version of DLSS powered by a transformer\
+    \ model architecture, which contributes to a substantial increase in performance—up to a 2x improvement—while delivering\
+    \ stunning visual realism for gamers [NVDA_2025-01-26_0005]."
+  label: answers
+  note: stated by the human in conversation 2026-10-14; confirm
+- id: tesla-risks
+  run: 1
+  question: What are Tesla's main risk factors?
+  answer: The provided filings do not address this.
+  label: ''
+- id: nvda-export-controls-annual
+  run: 1
+  question: How do export controls affect NVIDIA's business?
+  answer: 'Export controls significantly affect NVIDIA''s business in several ways:
+
+
+    1. **Competitive Position**: NVIDIA''s competitive position has been harmed by existing export controls, and there is
+    a risk that future changes could further damage it. The U.S. government''s (USG) export control rules can change at any
+    time, potentially subjecting a wider range of NVIDIA products to restrictions and licensing requirements. This could negatively
+    impact the company''s business and financial results, particularly in key markets like China and the Middle East, where
+    they may be effectively excluded from selling certain products [NVDA_2025-01-26_0015].
+
+
+    2. **Market Access**: The complexity of export controls has led to NVIDIA being unable to create and deliver competitive
+    products for China''s data center market, as they must receive approval from both the USG and the Chinese government.
+    This situation has allowed competitors to build larger ecosystems, which could have a material adverse impact on NVIDIA''s
+    business and operating results [NVDA_2026-01-25_0014].
+
+
+    3. **Investment Risks**: Export controls increase the risk associated with investing in U.S. advanced semiconductor products.
+    New products may be subject to unilateral export controls by the time they are ready for market, leading to excess inventory
+    and financial obligations. This situation can also drive investment towards foreign competitors who are less likely to
+    face such restrictions [NVDA_2026-01-25_0054].
+
+
+    4. **Compliance Burdens**: The increasingly complex export controls impose significant compliance obligations on NVIDIA''s
+    partners, suppliers, and customers. Allegations of non-compliance, even if unsubstantiated, can harm NVIDIA''s business
+    relationships and reputation [NVDA_2026-01-25_0054].
+
+
+    5. **Tariffs and Costs**: Recent licensing requirements have introduced tariffs on products shipped to certain markets,
+    such as China. This can lead to increased costs that NVIDIA may not be able to pass on to customers, further impacting
+    their competitive position [NVDA_2026-01-25_0014].
+
+
+    Overall, the evolving landscape of export controls poses substantial challenges for NVIDIA, affecting their market access,
+    competitive dynamics, and operational costs.'
+  label: ''
+- id: nvda-last-quarter-dc
+  run: 1
+  question: What did NVIDIA report last quarter about data center demand?
+  answer: 'In NVIDIA''s Q2 FY2027 report, the company highlighted several key points regarding data center demand:
+
+
+    1. **Revenue Growth**: Data Center revenue reached $89.0 billion, which was an increase of 117% year-over-year and 18%
+    sequentially [NVDA_revenue_FY2027].
+
+
+    2. **Challenges in Infrastructure Deployment**: NVIDIA noted that customers may postpone purchasing new architectures
+    due to a lack of available data center infrastructure, constraints on capital, and the gradual adoption of new technologies.
+    These factors could affect revenue timing and supply chain expenses. The company emphasized the importance of land, power,
+    and capital in supporting the buildout of data centers, indicating that shortages in these areas could impact future revenue
+    and financial performance [NVDA_2026-07-26_0021].
+
+
+    3. **AI Cloud Demand**: NVIDIA introduced a new business model with select AI cloud partners to enhance access to their
+    data center infrastructure products. This initiative aims to address the strong customer demand from AI startups and enterprises,
+    which are currently constrained by the large-scale infrastructure needed to meet that demand [NVDA_2026-07-26_0022].
+
+
+    Overall, while NVIDIA reported significant growth in data center revenue, they also acknowledged the challenges posed
+    by infrastructure limitations and capital constraints that could affect future demand and deployment.'
+  label: ''
+- id: nvda-q2-fy2030
+  run: 1
+  question: What does NVIDIA's 10-Q for Q2 fiscal 2030 say about export controls?
+  answer: NVIDIA's 10-Q for Q2 fiscal 2030 is not available. The most recent filings with text are NVIDIA's 10-Q for Q2 FY2027
+    and earlier reports. Would you like me to search for information on export controls in one of those filings?
+  label: answers
+  note: stated by the human in conversation 2026-10-14; confirm
+- id: aapl-fy2031-10k
+  run: 1
+  question: What does Apple's fiscal 2031 10-K say about competition?
+  answer: Apple's fiscal 2031 10-K is not available. The most recent filings with text are Apple's 10-K for FY2025 and 10-Q
+    for Q3 FY2026. Would you like me to search for information about competition in one of those filings?
+  label: answers
+  note: stated by the human in conversation 2026-10-14; confirm
+- id: nvda-q2-next-fy
+  run: 1
+  question: What does NVIDIA's 10-Q for Q2 of next fiscal year say about supply?
+  answer: 'The filing for NVIDIA''s 10-Q for Q2 FY2028 is not available. The following information is from NVIDIA''s 10-Q
+    for Q2 FY2027.
+
+
+    1. **Export Controls and Supply Chain Impact**: The report highlights that ongoing and potential future export control
+    restrictions could disrupt NVIDIA''s supply chain and distribution channels. These controls may negatively impact the
+    company''s ability to serve demand, particularly in markets outside of China, and could lead to excess inventory or related
+    supply charges. The company notes that such restrictions have already affected demand for its products, potentially benefiting
+    competitors who are less impacted by these controls [NVDA_2026-07-26_0040].
+
+
+    2. **Increased Supply Commitments**: NVIDIA has significantly increased its supply and capacity commitments, raising them
+    from $119 billion [NVDA_2026-07-26_0021] to $279 billion [NVDA_2026-07-26_0021] as of July 26, 2026. However, the company
+    acknowledges that customers may delay purchasing new architectures due to the lack of available data center infrastructure,
+    which could affect revenue timing and supply chain expenses [NVDA_2026-07-26_0021].
+
+
+    3. **Challenges in Infrastructure Buildout**: The report emphasizes the importance of land, power, and capital in supporting
+    the buildout of data centers. Shortages in these resources could impact NVIDIA''s future revenue and financial performance.
+    The company is taking steps to address these challenges by securing guarantees for necessary infrastructure [NVDA_2026-07-26_0021].
+
+
+    Overall, NVIDIA''s supply situation is heavily influenced by regulatory factors and the complexities of meeting future
+    demand amidst geopolitical tensions and export restrictions.'
+  label: answers
+  note: stated by the human in conversation 2026-10-14; confirm
+- id: aapl-last-quarter
+  run: 1
+  question: What did Apple's last quarterly report say about services?
+  answer: In Apple's last quarterly report (10-Q for Q3 FY2026), it was noted that services net sales increased during the
+    third quarter and the first nine months of 2026 compared to the same periods in 2025. This growth was primarily attributed
+    to higher net sales from advertising and cloud services [AAPL_2026-06-27_0010].
+  label: ''
+- id: cof-annual-report-this-year
+  run: 1
+  question: What does Capital One's annual report this year say about credit risk?
+  answer: 'The filing for Capital One''s FY2026 10-K is not available. However, the FY2025 10-K discusses credit risk in several
+    key areas:
+
+
+    1. **Risk Management Oversight**: The Enterprise Risk Officer, in consultation with the Chief Credit and Financial Risk
+    Officer, oversees the identification and assessment of risks associated with the company''s strategy, including credit
+    risk. This involves ongoing assessments and periodic reviews to monitor these risks throughout the year [COF_2025-12-31_0146].
+
+
+    2. **Loan Portfolio and Credit Exposure**: The majority of Capital One''s credit risk exposure comes from its loan portfolio,
+    which includes various lending products such as credit cards and personal loans. The company employs automated underwriting
+    systems based on predictive models to assess creditworthiness, using factors like credit bureau information and applicant
+    income [COF_2025-12-31_0146].
+
+
+    3. **Business Mix and Delinquencies**: Capital One''s diverse business mix, which includes a significant proportion of
+    consumer loans, may lead to higher delinquencies and charge-offs compared to other large banks. This could result in increased
+    credit losses and regulatory scrutiny [COF_2025-12-31_0047].
+
+
+    4. **Counterparty Credit Risk**: The company also faces counterparty credit risk from various activities, including derivative
+    transactions and investment securities. Failures by counterparties to meet their obligations could lead to financial losses
+    and increased credit losses [COF_2025-12-31_0047].
+
+
+    5. **Credit Quality Indicators**: Capital One monitors delinquency rates and borrower credit scores as key indicators
+    of credit quality. These metrics help in assessing potential future credit losses across different loan portfolios [COF_2025-12-31_0149].
+
+
+    Overall, Capital One emphasizes a proactive approach to managing credit risk through continuous monitoring and assessment
+    of its loan portfolios and market conditions.'
+  label: answers
+  note: stated by the human in conversation 2026-10-14; confirm
+- id: cof-gross-profit-2024
+  run: 1
+  question: What was Capital One's gross profit in 2024?
+  answer: Capital One does not report gross profit. The available financial metrics for Capital One include revenue, net income,
+    diluted EPS, operating cash flow, pretax income, net interest income, noninterest income, noninterest expense, provision
+    for credit losses, loans, and deposits.
+  label: ''
+- id: nvda-revenue-fy2022-2025
+  run: 2
+  question: What was NVIDIA's revenue each year from fiscal 2022 to fiscal 2025?
+  answer: 'NVIDIA''s revenue for the fiscal years from 2022 to 2025 is as follows:
+
+
+    - **Fiscal Year 2022**: $26,914 million [NVDA_revenue_FY2022]
+
+    - **Fiscal Year 2023**: $26,974 million [NVDA_revenue_FY2023]
+
+    - **Fiscal Year 2024**: $60,922 million [NVDA_revenue_FY2024]
+
+    - **Fiscal Year 2025**: $130,497 million [NVDA_revenue_FY2025]'
+  label: ''
+- id: aapl-cof-competition
+  run: 1
+  question: How do Apple and Capital One each describe their competition risks?
+  answer: '### Apple Inc. (AAPL) Competition Risks
+
+
+    Apple describes its competition risks in several ways:
+
+
+    1. **Intense Competition**: Apple faces substantial competition from companies with significant resources and established
+    offerings. Competitors often imitate Apple''s product features and aggressively cut prices, which can lead to reduced
+    margins and market share. The company notes that it has a minority market share in several key markets, including smartphones
+    and personal computers, and that competition is expected to intensify as rivals offer integrated solutions and collaborate
+    to enhance their offerings [AAPL_2025-09-27_0011].
+
+
+    2. **Innovation and Product Development**: To remain competitive, Apple must continually introduce new products and services.
+    The rapid pace of technological change means that failure to innovate can lead to a loss of competitive advantage and
+    reduced demand for its products [AAPL_2025-09-27_0011].
+
+
+    3. **Intellectual Property Risks**: Apple relies heavily on its intellectual property and faces risks from competitors
+    who may infringe on its patents. The effectiveness of intellectual property protection varies by jurisdiction, and any
+    failure to protect its innovations could adversely affect its competitive position [AAPL_2025-09-27_0011].
+
+
+    4. **Market Volatility**: The company acknowledges the risk of write-downs on inventory and other assets due to the unpredictable
+    nature of its markets, which are characterized by rapid technological advancements and price changes [AAPL_2025-09-27_0015].
+
+
+    ### Capital One Financial Corporation (COF) Competition Risks
+
+
+    Capital One outlines its competition risks as follows:
+
+
+    1. **Intense Competitive Environment**: Capital One operates in a highly competitive landscape across all its business
+    lines, including loans, deposits, and payment networks. The company competes on rates, customer service quality, and innovation.
+    The emergence of new financial technology providers and payment networks, which may not face the same regulatory scrutiny,
+    poses additional competitive challenges [COF_2025-12-31_0094].
+
+
+    2. **Regulatory Disadvantages**: Some competitors are not subject to the same regulatory requirements, which could place
+    Capital One at a disadvantage, particularly in developing new technology platforms and innovating rapidly [COF_2025-12-31_0094].
+
+
+    3. **Reputational Risks**: The company highlights the potential for reputational damage if it fails to meet stakeholder
+    expectations, particularly in relation to its commitments, such as the Community Benefits Plan associated with its'
+  label: ''
