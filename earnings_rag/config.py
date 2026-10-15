@@ -40,6 +40,8 @@ class Settings(BaseSettings):
 
     agent_max_steps: int = 6 # Max model calls before the agent is forced to answer
     agent_max_tokens: int = 800 # Output cap per agent model call; separate from llm_max_tokens so it can be swept
+    followup_turns: int = 3  # Earlier turns the follow-up rewriter sees
+    followup_answer_chars: int = 1500  # Each earlier answer is cut to this many characters
 
     excerpt_chars: int = 400
 
