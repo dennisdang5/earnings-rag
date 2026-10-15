@@ -52,3 +52,16 @@ def test_history_is_trimmed_to_the_last_turns_and_answers_are_cut():
     text = format_history(turns)
     assert 'q2' not in text and 'q3' in text and 'q5' in text
     assert text.count('a') == settings.followup_turns * settings.followup_answer_chars + text.count('Assistant')  # 'Assistant' has an 'a'
+
+
+def test_a_rewrite_that_drops_or_replaces_a_relative_period_is_rejected():
+    # the resolver (periods.py) needs "last year" as written; a year from the history would skip it
+    out = rewrite('What did Apple report last year?', HISTORY, FakeClient(reply('What did Apple report in fiscal 2024?')))
+    assert not out.changed and out.question == 'What did Apple report last year?'
+    out = rewrite('And Apple last quarter?', HISTORY, FakeClient(reply('What was Apple revenue?')))
+    assert not out.changed
+
+
+def test_a_rewrite_that_keeps_the_relative_period_is_accepted():
+    out = rewrite('And Apple last quarter?', HISTORY, FakeClient(reply("What was Apple's revenue last quarter?")))
+    assert out.changed and 'last quarter' in out.question

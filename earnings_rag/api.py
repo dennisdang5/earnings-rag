@@ -22,8 +22,14 @@ class AskRequest(BaseModel):
     def blank_to_none(cls, v):
         return v or None
 
+class HistoryTurn(BaseModel):
+    question: str = Field(max_length=1000)
+    answer: str = Field(max_length=6000)   # the rewriter cuts it further (followup_answer_chars)
+
 class AgentRequest(BaseModel):
     question: str = Field(min_length=1, max_length=1000)
+    # earlier turns, held by the page: used only to phrase a follow-up as a standalone question, never as evidence
+    history: list[HistoryTurn] = Field(default_factory=list, max_length=10)
 
 class Source(BaseModel):
     id: str
@@ -217,7 +223,7 @@ def agent_stream(req: AgentRequest) -> StreamingResponse:
         status = 'ok'
         details = {}
         try:
-            for name, data in stream_events(req.question, get_agent_client()):
+            for name, data in stream_events(req.question, get_agent_client(), history=[t.model_dump() for t in req.history]):
                 if name == 'details':
                     details = data
                 yield sse(name, data)
@@ -228,7 +234,8 @@ def agent_stream(req: AgentRequest) -> StreamingResponse:
             elapsed = time.perf_counter() - started
             AGENT_LATENCY.observe(elapsed)
             AGENT_REQUESTS.labels(status=status).inc()
-            log.info('agent_stream', question=req.question, status=status, duration_s=round(elapsed, 3),
+            log.info('agent_stream', question=req.question, history_turns=len(req.history),
+                     interpreted=details.get('interpreted'), status=status, duration_s=round(elapsed, 3),
                      steps=details.get('steps'), tool_calls=len(details.get('trace', [])),
                      revised=details.get('revised'), truncated=details.get('truncated'),
                      cut_off=details.get('cut_off'),
