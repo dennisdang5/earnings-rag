@@ -88,8 +88,14 @@
   .track { height: 14px; background: var(--paper); border-radius: 4px; overflow: hidden; }
   .fill { display: block; height: 100%; width: 0; background: var(--blue); border-radius: 4px; transition: width 0.7s cubic-bezier(.2, .7, .2, 1); }
   .fill.neg { background: var(--error); }
+  .fill.whole { background: var(--muted); opacity: 0.55; }
+  .chart.share .bar-row { grid-template-columns: 112px minmax(0, 1fr) 124px; }
+  .chart .caption { margin: 8px 0 0; font-size: 0.78rem; color: var(--muted); }
   .bar-value { font-weight: 600; white-space: nowrap; text-align: right; }
-  @media (max-width: 600px) { .bar-row { grid-template-columns: 84px minmax(0, 1fr) 64px; } }
+  @media (max-width: 600px) {
+    .bar-row { grid-template-columns: 84px minmax(0, 1fr) 64px; }
+    .chart.share .bar-row { grid-template-columns: 84px minmax(0, 1fr) 100px; }
+  }
 
   .followups { margin-top: 18px; }
   .followups .label { margin: 0 0 8px; font-size: 0.82rem; color: var(--muted); }
@@ -682,7 +688,8 @@ function itemMeta(item, n) {
 
 function factTitle(f) {
   const when = f.period && f.period !== "FY" ? `${f.period} FY${f.fiscal_year}` : `FY${f.fiscal_year}`;
-  return `${f.company} ${String(f.metric).replaceAll("_", " ")}, ${when}`;
+  const slice = f.segment ? ` (${f.segment})` : "";
+  return `${f.company} ${String(f.metric).replaceAll("_", " ")}${slice}, ${when}`;
 }
 
 function renderCards(t) {
@@ -724,53 +731,133 @@ function barValue(f) {
   return (f.value < 0 ? "-" : "") + v;
 }
 
-// The cited facts that belong on one chart: the same metric and unit, all annual or all quarterly, at least two.
-// The group with the most points wins; the chart only ever shows what the answer cites.
-function chartFacts(items) {
+// What a chart may compare. A company total and its slices (iPhone is part of Products, which is part of the
+// company's revenue) must never stand side by side as if they were separate things, so the plan is one of two shapes:
+//  - share: the answer cites a whole (the company total, or a slice that other cited slices belong to) and parts of it;
+//    each part is drawn as a share of the whole;
+//  - bars: cited facts that do not contain each other (a metric over periods, companies side by side, or slices).
+const isTotal = (f) => !f.breakdown;
+const snapshotKey = (f) => `${f.company}|${f.metric}|${f.unit}|${f.fiscal_year}|${f.period}`;
+
+function citedFacts(items) {
+  return items.filter((i) => i.type === "fact" && typeof i.value === "number");
+}
+
+function sharePlan(facts) {
+  const snapshots = new Map();
+  for (const f of facts) {
+    if (!snapshots.has(snapshotKey(f))) snapshots.set(snapshotKey(f), []);
+    snapshots.get(snapshotKey(f)).push(f);
+  }
+  let best = null;
+  for (const group of snapshots.values()) {
+    let whole = group.find(isTotal) || null;
+    if (!whole) {
+      const parents = group.filter((p) => group.some((c) => c !== p && c.part_of && c.part_of === p.segment && c.breakdown === p.breakdown));
+      whole = parents.sort((a, b) => b.value - a.value)[0] || null;
+    }
+    if (!whole || whole.value <= 0) continue;
+    // parts are non-negative and no larger than the whole; against a company total they come from one breakdown
+    let parts = group.filter((f) => f !== whole && f.value >= 0 && f.value <= whole.value
+      && (isTotal(whole) ? !isTotal(f) : f.part_of === whole.segment && f.breakdown === whole.breakdown));
+    if (isTotal(whole)) {
+      const byAxis = new Map();
+      for (const f of parts) byAxis.set(f.breakdown, [...(byAxis.get(f.breakdown) || []), f]);
+      parts = [...byAxis.values()].sort((a, b) => b.length - a.length)[0] || [];
+    }
+    if (parts.length && (!best || parts.length > best.parts.length)) {
+      // cited slices of the same period that are neither the whole nor part of it (Services beside Products)
+      const omitted = isTotal(whole) ? [] : group.filter((f) => f !== whole && !parts.includes(f) && !isTotal(f));
+      best = { kind: "share", whole, parts: parts.slice().sort((a, b) => b.value - a.value).slice(0, 8), omitted };
+    }
+  }
+  return best;
+}
+
+function barsPlan(facts) {
   const groups = new Map();
-  for (const item of items) {
-    if (item.type !== "fact" || typeof item.value !== "number") continue;
-    const key = `${item.metric}|${item.unit}|${item.period === "FY" ? "FY" : "Q"}`;
+  for (const f of facts) {
+    const key = isTotal(f)
+      ? `total|${f.metric}|${f.unit}|${f.period === "FY" ? "FY" : "Q"}`
+      : `slice|${f.metric}|${f.unit}|${f.breakdown}|${snapshotKey(f)}`;
     if (!groups.has(key)) groups.set(key, []);
-    groups.get(key).push(item);
+    groups.get(key).push(f);
   }
   let best = [];
   for (const g of groups.values()) if (g.length > best.length) best = g;
-  if (best.length < 2) return [];
+  // rows must not contain each other: drop a slice that another cited slice belongs to
+  best = best.filter((p) => !best.some((c) => c !== p && !isTotal(p) && c.part_of && c.part_of === p.segment && c.breakdown === p.breakdown));
+  if (best.length < 2) return null;
+  const slices = !isTotal(best[0]);
   const order = [];
   for (const f of best) if (!order.includes(f.company)) order.push(f.company);
-  return best.slice().sort((a, b) => order.indexOf(a.company) - order.indexOf(b.company) || String(a.period_end).localeCompare(String(b.period_end))).slice(0, 8);
+  const sorted = slices
+    ? best.slice().sort((a, b) => b.value - a.value)
+    : best.slice().sort((a, b) => order.indexOf(a.company) - order.indexOf(b.company) || String(a.period_end).localeCompare(String(b.period_end)));
+  return { kind: "bars", facts: sorted.slice(0, 8), slices };
+}
+
+function chartPlan(items) {
+  const facts = citedFacts(items);
+  return sharePlan(facts) || barsPlan(facts);
+}
+
+function percentOf(part, whole) {
+  const share = (100 * part) / whole;
+  return `${share < 10 ? share.toFixed(1) : Math.round(share)}%`;
+}
+
+function barRow(t, f, label, fillClass, value, share) {
+  const n = t.items.indexOf(f) + 1;
+  const row = el("button", "bar-row");
+  row.type = "button";
+  row.setAttribute("aria-label", `${factTitle(f)}: ${value}. Show source ${n}`);
+  const fill = el("span", "fill" + fillClass);
+  const track = el("span", "track");
+  track.append(fill);
+  row.append(el("span", "bar-label", label), track, el("span", "bar-value", value));
+  row.addEventListener("click", () => highlight(t, n));
+  return { row, fill, share };
 }
 
 function renderChart(t) {
-  const facts = chartFacts(t.items);
-  if (!facts.length) return;
-  const multi = new Set(facts.map((f) => f.company)).size > 1;
-  const first = facts[0];
-  const max = Math.max(...facts.map((f) => Math.abs(f.value))) || 1;
+  const plan = chartPlan(t.items);
+  if (!plan) return;
   const box = el("figure");
-  box.className = "chart";
-  const metricName = humanMetric(first.metric);
-  box.append(el("h3", null, multi ? metricName[0].toUpperCase() + metricName.slice(1) : `${nameOf(first.company)} ${metricName}`));
-  const bars = [];
-  for (const f of facts) {
-    const n = t.items.indexOf(f) + 1;
-    const row = el("button", "bar-row");
-    row.type = "button";
-    row.setAttribute("aria-label", `${factTitle(f)}: ${barValue(f)}. Show source ${n}`);
-    const fill = el("span", "fill" + (f.value < 0 ? " neg" : ""));
-    const track = el("span", "track");
-    track.append(fill);
-    row.append(el("span", "bar-label", multi ? `${f.company} ${periodLabel(f)}` : periodLabel(f)), track, el("span", "bar-value", barValue(f)));
-    row.addEventListener("click", () => highlight(t, n));
-    bars.push([fill, Math.abs(f.value) / max]);
-    box.append(row);
+  box.className = "chart" + (plan.kind === "share" ? " share" : "");
+  const rows = [];
+  if (plan.kind === "share") {
+    const { whole, parts } = plan;
+    const wholeLabel = isTotal(whole) ? `Total ${humanMetric(whole.metric)}` : whole.segment;
+    box.append(el("h3", null, `${nameOf(whole.company)} ${humanMetric(whole.metric)}, ${periodLabel(whole)}: share of ${wholeLabel}`));
+    rows.push(barRow(t, whole, wholeLabel, " whole", barValue(whole), 1));
+    for (const f of parts) rows.push(barRow(t, f, f.segment || f.id, "", `${barValue(f)} · ${percentOf(f.value, whole.value)}`, f.value / whole.value));
+    box.append(...rows.map((r) => r.row));
+    let note = isTotal(whole) ? "Slices can overlap (a product line is part of its category), so the shares need not add up." : "Each bar is a share of the larger bar above.";
+    if (plan.omitted.length) note += ` Not part of ${whole.segment}, so not shown: ${plan.omitted.map((f) => f.segment || f.id).join(", ")}.`;
+    box.append(el("p", "caption", note));
+  } else {
+    const facts = plan.facts;
+    const multi = new Set(facts.map((f) => f.company)).size > 1;
+    const first = facts[0];
+    const metricName = humanMetric(first.metric);
+    const max = Math.max(...facts.map((f) => Math.abs(f.value))) || 1;
+    if (plan.slices) {
+      box.append(el("h3", null, `${nameOf(first.company)} ${metricName} by ${first.breakdown}, ${periodLabel(first)}`));
+    } else {
+      box.append(el("h3", null, multi ? metricName[0].toUpperCase() + metricName.slice(1) : `${nameOf(first.company)} ${metricName}`));
+    }
+    for (const f of facts) {
+      const label = plan.slices ? f.segment || f.id : multi ? `${f.company} ${periodLabel(f)}` : periodLabel(f);
+      rows.push(barRow(t, f, label, f.value < 0 ? " neg" : "", barValue(f), Math.abs(f.value) / max));
+    }
+    box.append(...rows.map((r) => r.row));
   }
   t.chart.replaceChildren(box);
   t.chart.hidden = false;
   // grow from zero once the box is on screen (no motion when the reader asked for none)
-  requestAnimationFrame(() => requestAnimationFrame(() => bars.forEach(([fill, share]) => {
-    fill.style.width = Math.max(2, share * 100).toFixed(1) + "%";
+  requestAnimationFrame(() => requestAnimationFrame(() => rows.forEach((r) => {
+    r.fill.style.width = Math.max(2, r.share * 100).toFixed(1) + "%";
   })));
 }
 
