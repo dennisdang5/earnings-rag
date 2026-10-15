@@ -216,9 +216,6 @@
   .preview.show { opacity: 1; transform: none; }
   .preview .quote { font-size: 0.92rem; }
 
-  .byline { padding: 8px 16px 20px; text-align: center; font-size: 0.75rem; line-height: 1.4; color: var(--muted); }
-  .byline .author { display: block; font-weight: 500; }
-  .byline .dedication { display: block; font: italic 0.8rem var(--serif); }
 
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { transition: none !important; animation: none !important; }
@@ -262,18 +259,13 @@
   </form>
 </div>
 
-<footer class="byline">
-  <span class="author">By Dennis Dang</span>
-  <span class="dedication">for Mom and Dad</span>
-</footer>
-
 <div class="preview" id="preview" role="tooltip"></div>
 
 <script>
 const REFUSAL = "The provided filings do not address this.";
 const MODES = {
   agent: {
-    lede: "Ask about NVIDIA, Apple, or Capital One. The agent searches their 10-K and 10-Q filings and looks up reported figures, and every claim cites what it came from. Answers take 10–30 seconds.",
+    lede: "Ask about NVIDIA, Apple, or Capital One. The agent searches their 10-K and 10-Q filings and looks up reported figures, and every claim cites what it came from.",
     placeholder: "Ask about results, risks, or a quarter…",
     examples: [
       "What was NVIDIA's revenue growth in fiscal 2025?",
