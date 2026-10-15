@@ -97,6 +97,42 @@
   .toggle:hover { border-color: var(--blue); color: var(--blue); }
   .sources { margin-top: 24px; }
 
+  .flagline {
+    margin: 14px 0 0; padding: 8px 12px; border-left: 3px solid var(--warn);
+    background: var(--sheet); font-size: 0.9rem; color: var(--ink);
+  }
+  .flagline button { margin-left: 6px; }
+
+  .panel { margin-top: 24px; padding: 18px 20px; background: var(--sheet); border: 1px solid var(--rule); border-radius: 12px; }
+  .panel h3 {
+    margin: 22px 0 8px; font: 700 0.72rem var(--sans); letter-spacing: 0.08em;
+    text-transform: uppercase; color: var(--muted);
+  }
+  .panel h3:first-child { margin-top: 0; }
+  .check { display: flex; gap: 10px; align-items: baseline; padding: 3px 0; font-size: 0.92rem; }
+  .check .dot { background: var(--ok); }
+  .check.warn .dot { background: var(--warn); }
+  .check.info .dot { background: var(--blue); }
+  .check ul { margin: 4px 0 0; padding-left: 18px; color: var(--muted); font-size: 0.85rem; }
+  .panel details { border-top: 1px solid var(--rule); padding: 8px 0; }
+  .panel details:first-of-type { border-top: 0; }
+  .panel summary { cursor: pointer; font-size: 0.9rem; }
+  .panel summary .res { color: var(--muted); margin-left: 8px; }
+  .panel summary.warn .res { color: var(--warn); }
+  .panel details > :not(summary) { margin-top: 8px; }
+  .tablewrap { overflow-x: auto; }
+  table { border-collapse: collapse; font-size: 0.82rem; width: 100%; }
+  th, td { text-align: left; padding: 4px 10px 4px 0; border-bottom: 1px solid var(--rule); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; }
+  td.num, td.nw { white-space: nowrap; }
+  td.num { text-align: right; }
+  pre {
+    margin: 0; padding: 10px 12px; background: var(--paper); border-radius: 8px; font: 0.78rem/1.5 ui-monospace, Consolas, monospace;
+    white-space: pre-wrap; overflow-wrap: anywhere; max-height: 260px; overflow: auto;
+  }
+  .plist { margin: 0; padding-left: 18px; font-size: 0.85rem; }
+  .plist li { margin-bottom: 4px; }
+
   .passage { border-left: 3px solid var(--rule); padding: 2px 0 2px 16px; margin-bottom: 26px; }
   .passage.lit { border-left-color: var(--highlight); cursor: pointer; }
   .meta {
@@ -362,21 +398,24 @@ form.addEventListener("submit", async (e) => {
 
 function createTurn(question, kind) {
   const t = {
-    kind, text: "", items: [], cards: [], sweepTimer: null, pending: [], stepCount: 0,
+    kind, text: "", items: [], cards: [], sweepTimer: null, pending: [], revisions: [],
     el: el("article", "turn"), progress: el("p", "progress"), answer: el("div", "answer"),
     note: el("p", "note"), steps: el("ol", "steps"), passages: el("div"), sources: el("div", "sources"),
-    stepsToggle: el("button", "toggle"), sourcesToggle: el("button", "toggle"), toggles: el("div", "toggles"),
+    panelToggle: el("button", "toggle"), sourcesToggle: el("button", "toggle"), toggles: el("div", "toggles"),
+    panel: el("div", "panel"), flags: el("p", "flagline"),
   };
   t.note.hidden = true;
   t.sources.hidden = true;
   t.sources.append(t.passages);
-  t.stepsToggle.type = t.sourcesToggle.type = "button";
-  t.stepsToggle.hidden = t.sourcesToggle.hidden = true;
+  t.panel.hidden = true;
+  t.flags.hidden = true;
+  t.panelToggle.type = t.sourcesToggle.type = "button";
+  t.panelToggle.hidden = t.sourcesToggle.hidden = true;
   t.steps.hidden = kind !== "agent";
-  t.stepsToggle.addEventListener("click", () => setStepsOpen(t, t.steps.hidden));
+  t.panelToggle.addEventListener("click", () => setPanelOpen(t, t.panel.hidden));
   t.sourcesToggle.addEventListener("click", () => setSourcesOpen(t, t.sources.hidden));
-  t.toggles.append(t.stepsToggle, t.sourcesToggle);
-  t.el.append(el("p", "turn-q", question), t.steps, t.progress, t.answer, t.note, t.toggles, t.sources);
+  t.toggles.append(t.panelToggle, t.sourcesToggle);
+  t.el.append(el("p", "turn-q", question), t.steps, t.progress, t.answer, t.flags, t.note, t.toggles, t.panel, t.sources);
   thread.append(t.el);
 
   t.answer.addEventListener("click", (e) => {
@@ -408,10 +447,10 @@ function setSourcesOpen(t, open) {
     : `Show ${t.items.length} source${t.items.length === 1 ? "" : "s"}`;
 }
 
-function setStepsOpen(t, open) {
-  t.steps.hidden = !open;
-  t.stepsToggle.setAttribute("aria-expanded", String(open));
-  t.stepsToggle.textContent = open ? "Hide steps" : `Show steps (${t.stepCount})`;
+function setPanelOpen(t, open) {
+  t.panel.hidden = !open;
+  t.panelToggle.setAttribute("aria-expanded", String(open));
+  t.panelToggle.textContent = open ? "Hide how this was computed" : "How this was computed";
 }
 
 function finishTurn(t) {
@@ -481,8 +520,8 @@ async function runAgent(t, question, signal) {
     } else if (event === "tool_result") {
       resolveStep(t, describeResult(data));
     } else if (event === "revising") {
-      const why = data.problems.map(problemText).join("; ");
-      addStep(t, "Checking the draft: sent back (" + why + ")", "warn");
+      t.revisions.push(data.problems);
+      addStep(t, "Checking the draft: sent back (" + data.problems.map(problemText).join("; ") + ")", "warn");
     } else if (event === "answer") {
       t.text = data.text;
     } else if (event === "details") {
@@ -504,11 +543,9 @@ async function runAgent(t, question, signal) {
   }));
   t.items = cited;
   renderCards(t);
-  t.stepCount = t.steps.children.length;
-  if (t.stepCount) {
-    t.stepsToggle.hidden = false;
-    setStepsOpen(t, false);
-  }
+  t.steps.hidden = true;   // the live timeline is replaced by the panel's steps
+  renderPanel(t, details);
+  renderFlagLine(t, details);
   finishTurn(t);
 }
 
@@ -665,7 +702,8 @@ function renderCards(t) {
       card.append(...passageBody(item.text.trim(), null));
     } else if (item.type === "fact") {
       card.append(el("p", "value", money(item.value, item.unit)),
-        el("p", "detail", `${factTitle(item)} · period ended ${item.period_end}`), el("p", "detail", item.id));
+        el("p", "detail", `${factTitle(item)} · period ended ${item.period_end}`),
+        ...factFlags(item).map((f) => el("p", "detail", f)), el("p", "detail", item.id));
     } else if (item.type === "calc") {
       card.append(el("p", "value", `= ${Number(item.result).toLocaleString("en-US", { maximumFractionDigits: 6 })}`),
         el("p", "detail", item.expression), el("p", "detail", item.id));
@@ -673,6 +711,157 @@ function renderCards(t) {
     t.cards.push(card);
     t.passages.append(card);
   });
+}
+
+// ---- how this was computed (agent) ---------------------------------------------------------
+
+// What a fact row says about itself beyond its value: the caveats a reader needs.
+function factFlags(f) {
+  const out = [];
+  if (f.derived) out.push("derived: a quarter computed from year-to-date figures");
+  if ("as_reported" in f) out.push(`as reported, before split adjustment: ${f.as_reported}`);
+  if (f.balance) out.push(`balance on ${f.as_of}, not a flow over a period`);
+  if (f.part_of) out.push(`part of: ${f.part_of}`);
+  return out;
+}
+
+const CHECKS = [
+  ["uncited", "Every figure has a citation", (n) => `${n} sentence${n === 1 ? "" : "s"} with a figure and no citation`,
+    (x) => x],
+  ["unknown_ids", "Every cited id was returned by a tool", (n) => `${n} cited id${n === 1 ? "" : "s"} no tool returned`,
+    (x) => x],
+  ["unsupported", "Each cited figure matches its source", (n) => `${n} figure${n === 1 ? "" : "s"} no cited source states`,
+    (x) => `${x[0]}: ${x[1]}`],
+  ["slice_mismatch", "No company total is cited as a product or segment figure",
+    (n) => `${n} company-wide figure${n === 1 ? "" : "s"} cited for a product, segment or region`, (x) => `${x[0]}: ${x[1]}`],
+  ["unacknowledged_missing", "Every requested filing that is missing is acknowledged",
+    (n) => `${n} missing filing${n === 1 ? "" : "s"} the answer does not mention`, (x) => x],
+];
+
+function checkRow(kind, text, items) {
+  const row = el("div", "check " + kind);
+  row.append(el("span", "dot"));
+  const body = el("div");
+  body.append(el("span", null, text));
+  if (items && items.length) {
+    const ul = el("ul");
+    items.forEach((i) => ul.append(el("li", null, i)));
+    body.append(ul);
+  }
+  row.append(body);
+  return row;
+}
+
+// Problems still in the final answer, in words; empty when the answer passed every check.
+function finalProblems(d) {
+  const out = [];
+  for (const [key, , summary] of CHECKS) if ((d[key] || []).length) out.push(summary(d[key].length));
+  if (d.truncated) out.push("the step budget ran out, so the answer was forced");
+  if (d.cut_off) out.push("the answer hit the length limit and may be cut off");
+  return out;
+}
+
+function renderFlagLine(t, d) {
+  const problems = finalProblems(d);
+  if (!problems.length) return;
+  t.flags.replaceChildren(document.createTextNode(`Check this answer: ${problems.join("; ")}.`));
+  const open = el("button", "link", "See how this was computed");
+  open.type = "button";
+  open.addEventListener("click", () => { setPanelOpen(t, true); t.panel.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" }); });
+  t.flags.append(open);
+  t.flags.hidden = false;
+}
+
+function renderPanel(t, d) {
+  const panel = t.panel;
+  panel.replaceChildren();
+
+  panel.append(el("h3", null, "Checks"));
+  for (const [key, ok, summary, line] of CHECKS) {
+    const found = d[key] || [];
+    panel.append(found.length ? checkRow("warn", summary(found.length), found.map(line)) : checkRow("ok", ok));
+  }
+  if (d.revised) {
+    const why = t.revisions.flat().map(problemText);
+    panel.append(checkRow("info", "Sent back once to fix: " + (why.length ? why.join("; ") : "a failed check") +
+      (finalProblems(d).length ? " (not fully fixed)" : " (fixed)")));
+  }
+  panel.append(d.truncated ? checkRow("warn", `Step budget ran out after ${d.steps} steps; the answer was forced from what it had gathered`)
+    : checkRow("ok", `Finished in ${d.steps} step${d.steps === 1 ? "" : "s"}`));
+  if (d.cut_off) panel.append(checkRow("warn", "The answer hit the length limit and may be cut off"));
+
+  if (d.resolved_periods && d.resolved_periods.length) {
+    panel.append(el("h3", null, "Periods resolved"));
+    for (const r of d.resolved_periods) panel.append(checkRow("info", `“${r.phrase}” → ${r.ticker} ${r.label}`));
+  }
+
+  panel.append(el("h3", null, "Steps"));
+  if (!d.trace.length) panel.append(el("p", "detail", "No tools were called."));
+  d.trace.forEach((step) => panel.append(stepDetails(step)));
+
+  panel.append(el("h3", null, "Cost"));
+  const input = d.usage.reduce((a, u) => a + u.input, 0), output = d.usage.reduce((a, u) => a + u.output, 0);
+  panel.append(el("p", "detail", `${d.usage.length} model call${d.usage.length === 1 ? "" : "s"} · ${input.toLocaleString("en-US")} input tokens · ${output.toLocaleString("en-US")} output tokens`));
+
+  t.panelToggle.hidden = false;
+  setPanelOpen(t, false);
+}
+
+function stepDetails(step) {
+  const det = el("details");
+  const sum = el("summary");
+  let data = null;
+  try { data = JSON.parse(step.result); } catch { /* shown raw below */ }
+  const failed = data && data.error;
+  const count = data && Array.isArray(data.results) ? data.results.length : null;
+  sum.className = failed ? "warn" : "";
+  sum.append(document.createTextNode(describeCall(step.tool, step.arguments)),
+    el("span", "res", failed ? "not available" : count !== null ? `${count} result${count === 1 ? "" : "s"}` + (step.new_results !== null && step.new_results !== undefined ? `, ${step.new_results} new` : "") : "done"));
+  det.append(sum, ...resultBody(data));
+  const raw = el("details");
+  raw.append(el("summary", null, "Raw result the model saw"), el("pre", null, rawText(step.result)));
+  det.append(raw);
+  return det;
+}
+
+function rawText(result) {
+  try { return JSON.stringify(JSON.parse(result), null, 2); } catch { return String(result); }
+}
+
+function resultBody(data) {
+  if (!data || typeof data !== "object") return [];
+  const nodes = [];
+  if (data.error) nodes.push(el("p", "detail", "Tool error: " + data.error));
+  const rows = Array.isArray(data.results) ? data.results : [];
+  if (rows.length && rows.every((r) => r && "value" in r)) {
+    const table = el("table");
+    const head = el("tr");
+    ["Fact", "Value", "Period end", "Source", "Caveats"].forEach((h) => head.append(el("th", null, h)));
+    table.append(head);
+    for (const r of rows) {
+      const tr = el("tr");
+      tr.append(el("td", null, r.id), el("td", "num", money(r.value, r.unit)), el("td", "nw", r.period_end || ""),
+        el("td", "nw", r.source || ""), el("td", null, factFlags(r).join("; ")));
+      table.append(tr);
+    }
+    const wrap = el("div", "tablewrap");
+    wrap.append(table);
+    nodes.push(wrap);
+  } else if (rows.length) {
+    const ul = el("ul", "plist");
+    for (const r of rows) {
+      const li = el("li");
+      li.append(el("strong", null, r.id || "result"),
+        document.createTextNode(typeof r.text === "string" ? ` · ${filingLabel(r)}: ${r.text.trim().slice(0, 160)}…` : ""));
+      ul.append(li);
+    }
+    nodes.push(ul);
+  }
+  if (typeof data.id === "string" && "expression" in data) {
+    nodes.push(el("p", "detail", `${data.id}: ${data.expression} = ${data.result}`));
+  }
+  if (data.note) nodes.push(el("p", "detail", "Tool note: " + data.note));
+  return nodes;
 }
 
 // A quote with an optional "Show full passage" button; `loadFull` fetches the full text when the quote is only an excerpt.
