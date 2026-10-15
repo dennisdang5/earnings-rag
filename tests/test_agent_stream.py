@@ -134,3 +134,24 @@ def test_a_failing_decisions_lookup_does_not_lose_the_answer():
     trace = [{'tool': 'get_financials', 'arguments': {'company': 'AAPL', 'metric': 'revenue'}}]
     assert ingest_decisions_for(trace, broken) == []
     assert ingest_decisions_for([{'tool': 'search_filings', 'arguments': {}}], broken) == []
+
+
+def test_a_rewritten_follow_up_is_announced_and_is_what_the_agent_is_asked():
+    from earnings_rag.agent.followup import Rewrite
+    asked = []
+
+    def run(q, client, on_event=None):
+        asked.append(q)
+        return partial(run_agent, tools=[FACTS])(q, client, on_event=on_event)
+
+    client = FakeClient(answer('No figures here.'))
+    out = list(stream_events('And Apple?', client, run_fn=run, history=[{'question': 'x', 'answer': 'y'}],
+                             rewrite_fn=lambda q, h, c: Rewrite('Apple revenue fiscal 2025?', q, True)))
+    assert asked == ['Apple revenue fiscal 2025?']
+    assert out[0] == ('interpreted', {'question': 'Apple revenue fiscal 2025?', 'original': 'And Apple?'})
+    assert dict(out)['details']['interpreted'] == 'Apple revenue fiscal 2025?'
+
+
+def test_an_unchanged_question_sends_no_interpreted_event():
+    out = collect(FakeClient(answer('No figures here.')))
+    assert 'interpreted' not in [n for n, _ in out] and dict(out)['details']['interpreted'] is None

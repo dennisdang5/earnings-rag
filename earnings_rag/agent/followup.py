@@ -1,0 +1,66 @@
+"""
+Follow-up questions: turn "And Apple?" into a question that stands alone, so the agent (which is stateless) can answer it.
+
+The history is only used to phrase the question, never as evidence: the agent fetches every number again and the
+citation checks accept only ids returned in this run. So a wrong or made-up history can mislead the phrasing, but not
+smuggle in a figure. Any failure returns the question unchanged.
+"""
+import json
+import re
+from dataclasses import dataclass
+
+import structlog
+
+from earnings_rag.config import settings
+
+log = structlog.get_logger()
+
+MAX_QUESTION_CHARS = 1000  # the same cap /agent/stream puts on a question
+
+REWRITE_PROMPT = """You rewrite a user's follow-up question so it can be understood without the earlier conversation.
+
+Rules:
+- If the question already stands alone, return it word for word.
+- Otherwise fill in what it leaves out (the company, the metric, the period) from the earlier conversation.
+- Keep period wording exactly as the user wrote it ("last year", "last quarter", "two years ago", "next fiscal year"); do not turn it into a year or a date.
+- If the question names a company, keep that company; never replace it with one from the earlier conversation.
+- Do not answer the question and do not add facts or figures.
+Reply with JSON only: {"question": "<the standalone question>"}"""
+
+
+@dataclass
+class Rewrite:
+    question: str   # what the agent should be asked
+    original: str   # what the user typed
+    changed: bool
+
+
+def _same(a: str, b: str) -> bool:
+    norm = lambda s: re.sub(r'\W+', ' ', s).strip().lower()
+    return norm(a) == norm(b)
+
+
+def format_history(history: list[dict]) -> str:
+    """The last `followup_turns` turns, each answer cut to `followup_answer_chars` (its [ids] name company and year)."""
+    turns = history[-settings.followup_turns:]
+    return '\n\n'.join(f'User: {t["question"]}\nAssistant: {t["answer"][:settings.followup_answer_chars]}' for t in turns)
+
+
+def rewrite(question: str, history: list[dict], client, model: str | None = None) -> Rewrite:
+    unchanged = Rewrite(question, question, False)
+    if not history:
+        return unchanged
+    try:
+        resp = client.chat.completions.create(
+            model=model or settings.llm_model, temperature=0, max_tokens=150,
+            response_format={'type': 'json_object'},
+            messages=[{'role': 'system', 'content': REWRITE_PROMPT},
+                      {'role': 'user', 'content': f'Earlier conversation:\n{format_history(history)}\n\n'
+                                                  f'Follow-up question: {question}'}])
+        new = json.loads(resp.choices[0].message.content)['question'].strip()
+    except Exception:   # a failed rewrite must never lose the answer
+        log.warning('followup_rewrite_failed', exc_info=True)
+        return unchanged
+    if not new or len(new) > MAX_QUESTION_CHARS or _same(new, question):
+        return unchanged
+    return Rewrite(new, question, True)

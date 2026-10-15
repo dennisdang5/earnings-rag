@@ -14,6 +14,7 @@ from typing import Callable, Iterator
 
 import structlog
 
+from earnings_rag.agent.followup import rewrite
 from earnings_rag.agent.loop import run_agent
 
 log = structlog.get_logger()
@@ -83,13 +84,17 @@ def ingest_decisions_for(trace: list[dict], lookup: Callable | None = None) -> l
         return []
 
 
-def stream_events(question: str, client, run_fn: Callable = run_agent, decisions_fn: Callable | None = None) -> Iterator[tuple[str, dict]]:
+def stream_events(question: str, client, run_fn: Callable = run_agent, decisions_fn: Callable | None = None,
+                  history: list[dict] | None = None, rewrite_fn: Callable = rewrite) -> Iterator[tuple[str, dict]]:
     """
     Yield (event, data) for one agent run: status / tool_call / tool_result / revising while it works, then `answer`
     (the text), `details` (the whole result: trace, usage, flags, resolved periods) and `done`. A failure inside the
     run yields `error` instead, with a message safe to show; the exception is re-raised after the stream so the
     caller can log it.
     """
+    rw = rewrite_fn(question, history or [], client)   # "And Apple?" -> a question that stands alone
+    if rw.changed:
+        yield 'interpreted', {'question': rw.question, 'original': rw.original}
     events: queue.Queue = queue.Queue()
     stop = threading.Event()
 
@@ -100,7 +105,7 @@ def stream_events(question: str, client, run_fn: Callable = run_agent, decisions
 
     def work() -> None:
         try:
-            events.put(('result', run_fn(question, client, on_event=on_event)))
+            events.put(('result', run_fn(rw.question, client, on_event=on_event)))
         except Cancelled:
             pass
         except Exception as e:   # reported to the stream, never lost in the thread
@@ -121,7 +126,8 @@ def stream_events(question: str, client, run_fn: Callable = run_agent, decisions
                     yield mapped
             elif kind == 'result':
                 yield 'answer', {'text': payload.answer}
-                yield 'details', {**asdict(payload), 'ingest_decisions': ingest_decisions_for(payload.trace, decisions_fn)}
+                yield 'details', {**asdict(payload), 'ingest_decisions': ingest_decisions_for(payload.trace, decisions_fn),
+                                    'interpreted': rw.question if rw.changed else None}
                 yield 'done', {}
             else:
                 failure = payload
