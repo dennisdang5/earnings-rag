@@ -3,7 +3,8 @@ from fastapi.responses import StreamingResponse, FileResponse
 from pydantic import BaseModel, Field, field_validator
 from earnings_rag.config import settings
 from earnings_rag.pipeline import ask as run_ask, retrieve
-from earnings_rag.store import get_chunk
+from earnings_rag.companies import build_cards
+from earnings_rag.store import get_chunk, get_facts, text_periods
 from earnings_rag.llm import generate_stream, _llm
 from earnings_rag.agent_stream import stream_events
 import time
@@ -191,6 +192,20 @@ def ask_stream(req: AskRequest) -> StreamingResponse:
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+def latest_revenue(ticker: str) -> dict | None:
+    rows = get_facts(ticker, 'revenue', None, 'FY', limit=1)
+    if not rows:
+        return None
+    return {'fiscal_year': rows[0]['fiscal_year'], 'usd_millions': round(rows[0]['value'] / 1e6)}
+
+def get_company_cards() -> list[dict]:
+    return build_cards(settings.tickers, settings.company_names, text_periods(), latest_revenue)
+
+@app.get('/companies')
+def companies() -> list[dict]:
+    """What the corpus covers, for the home screen: name, newest filings with text, latest fiscal-year revenue."""
+    return get_company_cards()
 
 def get_agent_client():
     return _llm()   # a function so tests can swap in a scripted client

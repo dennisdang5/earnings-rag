@@ -24,6 +24,7 @@
     }
   }
   * { box-sizing: border-box; }
+  [hidden] { display: none !important; }   /* a display rule on a class must not undo the hidden attribute */
   body {
     margin: 0; background: var(--paper); color: var(--ink);
     font: 16px/1.55 var(--sans); -webkit-font-smoothing: antialiased;
@@ -168,21 +169,26 @@
     .composer { padding: 24px 12px 10px; }
   }
 
-  .examples-label { margin: 18px 0 8px; text-align: center; font-size: 0.85rem; color: var(--muted); }
-  .examples {
-    display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px;
-    margin-top: 0; font-size: 0.88rem;
+  .home { max-width: 980px; margin: 8px auto 0; }
+  .home-label { margin: 0 0 12px; text-align: center; font-size: 0.85rem; color: var(--muted); }
+  .cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+  @media (max-width: 800px) { .cards { grid-template-columns: 1fr; } }
+  .company {
+    display: flex; flex-direction: column; gap: 6px; padding: 18px;
+    background: var(--sheet); border: 1px solid var(--rule); border-radius: 14px;
   }
+  .company h2 { margin: 0; font-size: 1.15rem; display: flex; align-items: baseline; gap: 8px; }
+  .company h2 span { font: 600 0.75rem var(--sans); color: var(--muted); letter-spacing: 0.06em; }
+  .company .big { font: 700 1.6rem/1.2 var(--sans); letter-spacing: -0.01em; margin: 6px 0 0; }
+  .company .stat { margin: 0; font-size: 0.85rem; color: var(--muted); }
+  .nw { white-space: nowrap; }
+  .company .asks { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
   .example {
     border: 1px solid var(--rule); background: transparent; color: var(--ink);
-    border-radius: 10px; padding: 8px 14px; font: inherit; cursor: pointer;
+    border-radius: 10px; padding: 8px 12px; font: inherit; font-size: 0.88rem; cursor: pointer;
     text-align: left; line-height: 1.4;
   }
   .example:hover { border-color: var(--blue); color: var(--blue); }
-  .example:last-child:nth-child(odd) { grid-column: 1 / -1; justify-self: center; }
-  @media (max-width: 600px) {
-    .examples { grid-template-columns: 1fr; }
-  }
 
   .preview {
     position: absolute; z-index: 10; max-width: 340px;
@@ -207,6 +213,11 @@
     <p class="lede">Ask about NVIDIA, Apple, or Capital One. The agent searches their 10-K and 10-Q filings and looks up reported figures, and every claim cites what it came from.</p>
   </header>
 
+  <section class="home" id="home" aria-label="Companies covered">
+    <p class="home-label">What the filings cover. Or ask your own question below.</p>
+    <div class="cards" id="cards"></div>
+  </section>
+
   <section class="thread" id="thread" aria-label="Conversation">
     <div class="thread-bar" id="thread-bar" hidden>
       <button type="button" class="link" id="clear">New chat</button>
@@ -220,10 +231,6 @@
       <textarea id="q" rows="1" aria-label="Your question"></textarea>
       <button class="btn" id="go" type="submit">Ask</button>
     </div>
-    <div id="examples-wrap">
-      <p class="examples-label">Or try one of these</p>
-      <div class="examples" id="examples"></div>
-    </div>
   </form>
 </div>
 
@@ -232,13 +239,21 @@
 <script>
 const REFUSAL = "The provided filings do not address this.";
 const PLACEHOLDER = "Ask about results, risks, or a quarter…";
-const EXAMPLES = [
-  "What was NVIDIA's revenue growth in fiscal 2025?",
-  "What did NVIDIA say about export controls in its latest quarterly report?",
-  "Compare Apple and NVIDIA gross margin in fiscal 2025.",
-  "What is NVIDIA's diluted EPS for fiscal 2025?",
-  "What are the main credit risks Capital One describes?",
-];
+// The home screen: names and questions are fixed here, the filing dates and revenue come from /companies.
+const COMPANIES = {
+  NVDA: { name: "NVIDIA", asks: [
+    "What was NVIDIA's revenue growth in fiscal 2025?",
+    "What did NVIDIA say about export controls in its latest quarterly report?",
+  ] },
+  AAPL: { name: "Apple", asks: [
+    "How did Apple's services revenue change in its latest quarterly report?",
+    "What does Apple say about tariffs in its latest quarterly report?",
+  ] },
+  COF: { name: "Capital One", asks: [
+    "What are the main credit risks Capital One describes?",
+    "How large are Capital One's loans and deposits?",
+  ] },
+};
 // What the citation check calls its findings, in words for the timeline.
 const PROBLEMS = {
   uncited: "a figure had no citation",
@@ -263,15 +278,53 @@ function el(tag, className, text) {
   return e;
 }
 
-// ---- examples, composer -------------------------------------------------------
+// ---- home screen, composer ----------------------------------------------------
 
 q.placeholder = PLACEHOLDER;
-$("examples").replaceChildren(...EXAMPLES.map((ex) => {
-  const b = el("button", "example", ex);
-  b.type = "button";
-  b.onclick = () => { q.value = ex; autosize(); form.requestSubmit(); };
-  return b;
-}));
+
+function ask(question) {
+  q.value = question;
+  autosize();
+  form.requestSubmit();
+}
+
+function companyCard(c) {
+  const known = COMPANIES[c.ticker] || { name: c.name || c.ticker, asks: [] };
+  const card = el("article", "company");
+  const h = el("h2", null, c.name || known.name);
+  h.append(el("span", null, c.ticker));
+  card.append(h);
+  if (c.revenue) {
+    card.append(el("p", "big", compactDollars(c.revenue.usd_millions)),
+      el("p", "stat", `FY${c.revenue.fiscal_year} revenue`));
+  }
+  for (const [title, f] of [["Latest annual report", c.latest_annual], ["Latest quarterly report", c.latest_quarterly]]) {
+    if (!f) continue;
+    const line = el("p", "stat", `${title}: ${f.label}, ended `);
+    line.append(el("span", "nw", f.period));
+    card.append(line);
+  }
+  const asks = el("div", "asks");
+  for (const question of known.asks) {
+    const b = el("button", "example", question);
+    b.type = "button";
+    b.onclick = () => ask(question);
+    asks.append(b);
+  }
+  card.append(asks);
+  return card;
+}
+
+// USD millions as $215.9B or $950M, for a card.
+function compactDollars(millions) {
+  return millions >= 1000 ? `$${(millions / 1000).toFixed(1)}B` : `$${Math.round(millions)}M`;
+}
+
+function renderHome(cards) { $("cards").replaceChildren(...cards.map(companyCard)); }
+
+// Cards with questions show at once; the numbers fill in when /companies answers (and stay out if it fails).
+renderHome(Object.entries(COMPANIES).map(([ticker, c]) => ({ ticker, name: c.name })));
+fetch("/companies").then((r) => (r.ok ? r.json() : null)).then((d) => { if (d) renderHome(d); }).catch(() => {});
 
 function autosize() {
   q.style.height = "auto";
@@ -290,7 +343,7 @@ function setBusy(on) {
 
 function updateThreadChrome() {
   $("thread-bar").hidden = turns.length === 0;
-  $("examples-wrap").hidden = turns.length > 0;
+  $("home").hidden = turns.length > 0;
 }
 
 $("clear").addEventListener("click", () => {
