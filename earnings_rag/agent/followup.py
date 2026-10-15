@@ -11,7 +11,9 @@ from dataclasses import dataclass
 
 import structlog
 
+from earnings_rag.agent.citations import years_in
 from earnings_rag.config import settings
+from earnings_rag.periods import PHRASE
 
 log = structlog.get_logger()
 
@@ -40,6 +42,14 @@ def _same(a: str, b: str) -> bool:
     return norm(a) == norm(b)
 
 
+def keeps_period_wording(original: str, new: str) -> bool:
+    """Relative periods ("last year", "last quarter") are resolved in code from each company's calendar (periods.py). A
+    rewrite that drops one, or swaps it for a year it took from the history, would skip that. Measured: with history,
+    "What did Apple report last year?" came back as "...in fiscal 2024" 4/4 although the prompt says not to."""
+    phrases = [m.group(0).lower() for m in PHRASE.finditer(original)]
+    return all(p in new.lower() for p in phrases) and (not phrases or years_in(new) <= years_in(original))
+
+
 def format_history(history: list[dict]) -> str:
     """The last `followup_turns` turns, each answer cut to `followup_answer_chars` (its [ids] name company and year)."""
     turns = history[-settings.followup_turns:]
@@ -61,6 +71,6 @@ def rewrite(question: str, history: list[dict], client, model: str | None = None
     except Exception:   # a failed rewrite must never lose the answer
         log.warning('followup_rewrite_failed', exc_info=True)
         return unchanged
-    if not new or len(new) > MAX_QUESTION_CHARS or _same(new, question):
+    if not new or len(new) > MAX_QUESTION_CHARS or _same(new, question) or not keeps_period_wording(question, new):
         return unchanged
     return Rewrite(new, question, True)

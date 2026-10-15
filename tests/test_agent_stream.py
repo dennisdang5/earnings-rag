@@ -99,7 +99,7 @@ def test_endpoint_sends_sse_events(monkeypatch):
 
     client = FakeClient(tool_request('get', '{"text": "x"}'), answer('Revenue was $130.5 billion [NVDA_revenue_FY2025].'))
     monkeypatch.setattr(api, 'get_agent_client', lambda: client)
-    monkeypatch.setattr(api, 'stream_events', lambda q, c: stream_events(q, c, run_fn=RUN))
+    monkeypatch.setattr(api, 'stream_events', lambda q, c, history=None: stream_events(q, c, run_fn=RUN, history=history))
     response = TestClient(api.app).post('/agent/stream', json={'question': 'NVIDIA revenue?'})
     assert response.status_code == 200 and response.headers['content-type'].startswith('text/event-stream')
     events = [line[len('event: '):] for line in response.text.splitlines() if line.startswith('event: ')]
@@ -155,3 +155,29 @@ def test_a_rewritten_follow_up_is_announced_and_is_what_the_agent_is_asked():
 def test_an_unchanged_question_sends_no_interpreted_event():
     out = collect(FakeClient(answer('No figures here.')))
     assert 'interpreted' not in [n for n, _ in out] and dict(out)['details']['interpreted'] is None
+
+
+def test_endpoint_passes_history_to_the_rewrite_and_announces_the_standalone_question(monkeypatch):
+    from fastapi.testclient import TestClient
+    from earnings_rag import api
+
+    client = FakeClient(answer(json.dumps({'question': 'What was Apple revenue in fiscal 2025?'})),
+                        answer('No figures here.'))
+    monkeypatch.setattr(api, 'get_agent_client', lambda: client)
+    monkeypatch.setattr(api, 'stream_events', lambda q, c, history=None: stream_events(q, c, run_fn=RUN, history=history))
+    history = [{'question': 'NVIDIA revenue fiscal 2025?', 'answer': 'It was $130.5 billion [NVDA_revenue_FY2025].'}]
+    response = TestClient(api.app).post('/agent/stream', json={'question': 'And Apple?', 'history': history})
+    assert response.status_code == 200
+    assert 'event: interpreted' in response.text and 'What was Apple revenue in fiscal 2025?' in response.text
+    assert 'NVDA_revenue_FY2025' in client.requests[0]['messages'][1]['content']   # the rewriter saw the history
+    assert client.requests[1]['messages'][-1]['content'].startswith('What was Apple revenue in fiscal 2025?')   # the agent saw the rewrite
+
+
+def test_endpoint_rejects_a_malformed_or_oversized_history():
+    from fastapi.testclient import TestClient
+    from earnings_rag import api
+
+    post = lambda h: TestClient(api.app).post('/agent/stream', json={'question': 'q', 'history': h}).status_code
+    assert post([{'question': 'x'}]) == 422                                            # no answer
+    assert post([{'question': 'x', 'answer': 'a' * 6001}]) == 422                       # too long
+    assert post([{'question': 'x', 'answer': 'y'}] * 11) == 422                         # too many turns
