@@ -1006,6 +1006,8 @@ function renderPanel(t, d) {
     for (const r of d.resolved_periods) panel.append(checkRow("info", `“${r.phrase}”${r.calendar_year ? ` (calendar ${r.calendar_year})` : ""} → ${r.label}`));
   }
 
+  renderIngest(panel, d.ingest_decisions || []);
+
   panel.append(el("h3", null, "Steps"));
   if (!d.trace.length) panel.append(el("p", "detail", "No tools were called."));
   d.trace.forEach((step) => panel.append(stepDetails(step)));
@@ -1016,6 +1018,22 @@ function renderPanel(t, d) {
 
   t.panelToggle.hidden = false;
   setPanelOpen(t, false);
+}
+
+const INGEST_KIND = {
+  skipped: ["warn", "Not stored"], stale: ["warn", "Stale"], check_differs: ["warn", "Identity check differs"],
+  missing_core: ["warn", "Missing core metric"], not_stored: ["warn", "Company not stored"],
+  override: ["info", "Pinned by hand"], note: ["info", "Note"], split_check: ["ok", "Split check"], check_ok: ["ok", "Identity check"],
+};
+
+function renderIngest(panel, rows) {
+  if (!rows.length) return;
+  panel.append(el("h3", null, "Ingest decisions"));
+  panel.append(el("p", "detail", "What the data load decided about the figures this answer used."));
+  for (const r of rows) {
+    const [kind, label] = INGEST_KIND[r.kind] || ["info", r.kind];
+    panel.append(checkRow(kind, `${r.ticker}${r.metric ? " " + r.metric : ""} · ${label}: ${r.detail}`));
+  }
 }
 
 function stepDetails(step) {
