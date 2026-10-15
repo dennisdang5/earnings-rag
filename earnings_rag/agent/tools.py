@@ -1,11 +1,13 @@
 import json
 import re
 from dataclasses import dataclass
+from datetime import date
 from typing import Callable, Literal
 
 from pydantic import BaseModel, Field, ValidationError
 
 from earnings_rag.calc import evaluate
+from earnings_rag.periods import Calendar
 from earnings_rag.pipeline import retrieve
 from earnings_rag.segments import CORPORATE, find_parts
 from earnings_rag.store import (get_facts, fact_years, get_breakdown, available_breakdowns, breakdown_names, available_metrics,
@@ -284,6 +286,46 @@ def get_breakdown_result(args: GetFinancialsArgs) -> dict:
     return {'results': results, **({'note': ' '.join(notes)} if notes else {})}
 
 
+def _today() -> date:
+    return date.today()   # a function so tests can fix it
+
+
+def fiscal_year_end(company: str, fiscal_year: int) -> date | None:
+    """When the company's fiscal year ends, from the fiscal calendar anchored on its newest 10-K; None without a 10-K."""
+    ten_ks = [f for f in text_periods(company) if f['form'] == '10-K']
+    return Calendar(max(ten_ks, key=lambda f: f['period'])).year_end(fiscal_year) if ten_ks else None
+
+
+def incomplete_year_result(args: GetFinancialsArgs, quarters: list[dict]) -> dict:
+    """
+    A fiscal year with quarters but no annual (FY) row (the end is the fiscal calendar's, a day or two off for 52/53-week
+    years, so the note gives the month, not a date): the quarters reported so far, and a note saying why there is
+    no annual figure. Two cases the user must not blur: the year has not ended yet, or it ended and the 10-K is not
+    filed. Before this, the agent added three quarters and presented them as the fiscal year (Apple FY2026, 3 of 3 runs).
+    `missing_filing` makes the loop check that the answer says the annual figures are not available.
+    """
+    fy, company = args.fiscal_year, args.company
+    periods = sorted({r['fiscal_period'] for r in quarters})
+    end = fiscal_year_end(company, fy)
+    ended = end is not None and end < _today()
+    if end is None:
+        why = f'{company} fiscal {fy} is not complete'
+        reason = 'the fiscal year is not complete'
+    elif ended:
+        why = f'{company} fiscal {fy} ended in {end:%B %Y}, but its 10-K has not been filed'
+        reason = 'the 10-K has not been filed yet'
+    else:
+        why = f'{company} fiscal {fy} has not ended yet (it ends in {end:%B %Y})'
+        reason = 'the fiscal year has not ended yet'
+    note = (f'{why}, so there is no annual figure. Reported so far: {", ".join(periods)}. Begin the answer by saying '
+            f'the annual figures for fiscal {fy} are not available yet because {reason}, then present these quarters. '
+            f'Do not call a sum of quarters the fiscal year; if you add them, call it the first {len(periods)} quarters.')
+    return {'results': [fact_result(r) for r in quarters], 'note': note,
+            'incomplete_year': {'fiscal_year': fy, 'reported_periods': periods, 'ended': ended,
+                                'ends': end.isoformat() if end else None},
+            'missing_filing': {'label': f'{company} FY{fy} 10-K', 'fiscal_year': fy}}
+
+
 def get_financials(args: GetFinancialsArgs) -> dict:
     if args.breakdown is not None:
         return get_breakdown_result(args)
@@ -296,6 +338,13 @@ def get_financials(args: GetFinancialsArgs) -> dict:
                          f'Available for {args.company}: {", ".join(available)}'}
 
     rows = get_facts(args.company, args.metric, args.fiscal_year, args.period, limit=DEFAULT_FACT_ROWS)
+    if args.fiscal_year is not None and args.period in (None, 'FY', 'Q4'):
+        # an annual (or Q4) figure asked for: does the year have quarters but no FY row?
+        year_rows = rows if args.period is None else (get_facts(args.company, args.metric, args.fiscal_year, None,
+                                                                limit=DEFAULT_FACT_ROWS) if not rows else rows)
+        quarters = [r for r in year_rows if r['fiscal_period'] in ('Q1', 'Q2', 'Q3', 'Q4')]
+        if quarters and not any(r['fiscal_period'] == 'FY' for r in year_rows):
+            return incomplete_year_result(args, quarters)
     if not rows:
         years = fact_years(args.company, args.metric)
         span = f'fiscal years {years[0]}-{years[1]}' if years else 'no years'

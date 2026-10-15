@@ -106,7 +106,15 @@
   as_of: '2026-10-15'
   expect:
     not_available_first: true
-  known_issue: 'FY2026 has no 10-K, but its Q1-Q3 facts exist, so the agent adds up three quarters and presents them as the fiscal year (one run summed net income wrongly without calculate)'
+    contains: [['Q3 FY2026', 'third quarter', 'Q3']]
+    not_contains: ['Total Revenue']
+
+- id: cof-fiscal-2026-revenue
+  question: "What was Capital One's revenue in fiscal 2026?"
+  as_of: '2026-10-15'
+  expect:
+    not_available_first: true
+    contains: [['not ended', 'has not yet ended', 'not yet ended', 'yet to end']]
 
 # --- numbers ---
 - id: aapl-gross-margin-fy2024
