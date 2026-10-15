@@ -1,11 +1,12 @@
 """
-Relative periods ("next fiscal year", "last quarter", "two years ago") resolved in code from today's date and each
-company's fiscal calendar. The model got these wrong and ignored corrections in the system prompt (next fiscal year
+Relative periods ("next fiscal year", "last quarter", "two years ago", "last year") resolved in code from today's date
+and each company's fiscal calendar. A bare "last/this/next year" means the calendar year (the user's decision), mapped
+to the fiscal year that overlaps it the most; "fiscal year" keeps the fiscal reading. The model got these wrong and ignored corrections in the system prompt (next fiscal year
 read as FY2027, 5 of 5 runs, even beside a table saying FY2028), but follows a note beside the question (FY2028, 5 of 5),
 so run_agent appends period_note() to the user message. Pure: the calendar comes from text_periods() rows.
 """
 import re
-from datetime import date
+from datetime import date, timedelta
 
 from earnings_rag.agent.citations import years_in
 from earnings_rag.pipeline import COMPANY_PATTERNS
@@ -15,9 +16,9 @@ OFFSETS = {'this': 0, 'current': 0, 'next': 1, 'last': -1, 'previous': -1, 'prio
 
 # Order matters: the annual-report phrase first, so "this year's annual report" is not also read as "this year".
 PHRASE = re.compile(
-    r"(?P<annual>this year'?s (?:annual report|10-?k)|(?:annual report|10-?k) (?:for|from) this year)"
+    r"(?P<annual>this year'?s (?:annual report|10-?k)|(?:annual report|10-?k) (?:for |from )?this year)"
     r"|(?P<ago>(?P<n>an?|one|two|three|four|five|\d+) (?:fiscal )?(?P<unit>years?|quarters?) (?P<dir>ago|from now))"
-    r"|(?P<rel>(?P<which>this|current|next|last|previous|prior) (?:fiscal )?(?P<what>year|quarter))\b",
+    r"|(?P<rel>(?P<which>this|current|next|last|previous|prior) (?P<fiscal>fiscal )?(?P<what>year|quarter))\b",
     re.IGNORECASE)
 
 
@@ -45,6 +46,17 @@ class Calendar:
 
     def quarter_end(self, fy: int, q: int) -> date:
         return add_months(self.year_end(fy - 1), 3 * q)
+
+    def fiscal_year_for_calendar(self, year: int) -> tuple[int, int]:
+        """(fiscal year, days it overlaps calendar `year`) for the fiscal year that overlaps the calendar year most."""
+        jan1, dec31 = date(year, 1, 1), date(year, 12, 31)
+        best = (0, -1)
+        for fy in range(year - 1, year + 3):
+            start, end = self.year_end(fy - 1) + timedelta(days=1), self.year_end(fy)
+            days = (min(end, dec31) - max(start, jan1)).days + 1
+            if days >= best[1]:       # a tie goes to the later fiscal year
+                best = (fy, days)
+        return best
 
     def containing(self, d: date) -> tuple[int, int]:
         """(fiscal year, quarter) that date d falls in."""
@@ -86,7 +98,7 @@ def resolve_periods(question: str, filings: list[dict], today: date) -> list[dic
         for ticker in named:
             cal, newest = cals[ticker]
             fy, q = cal.containing(today)
-            extra = ''
+            extra, calendar_year = '', None
             if m['annual']:                            # user's decision: "this year's annual report" = the newest 10-K
                 fy, period = newest['fiscal_year'], 'FY'
             elif m['ago'] and m['unit'].lower().startswith('quarter'):
@@ -99,10 +111,18 @@ def resolve_periods(question: str, filings: list[dict], today: date) -> list[dic
             elif m['what'].lower() == 'quarter':       # user's decision: "last quarter" = the last completed one
                 fy, q = shift_quarter(fy, q, OFFSETS[m['which'].lower()])
                 period = f'Q{q}'
-            else:
+            elif m['fiscal']:                          # "last fiscal year": the fiscal year, counted from today's
                 fy, period = fy + OFFSETS[m['which'].lower()], 'FY'
+            else:                                      # user's decision: a bare "last year" is the calendar year
+                calendar_year = today.year + OFFSETS[m['which'].lower()]
+                fy, days = cal.fiscal_year_for_calendar(calendar_year)
+                period = 'FY'
+                if days < (date(calendar_year, 12, 31) - date(calendar_year, 1, 1)).days + 1:   # not the same span
+                    start = cal.year_end(fy - 1) + timedelta(days=1)
+                    extra = f' ({start.isoformat()} to {cal.year_end(fy).isoformat()})'   # the dates, not the word "calendar": see period_note
             label = (f'{ticker} FY{fy}' if period == 'FY' else f'{ticker} {period} FY{fy}') + extra
-            out.append({'phrase': m.group(0), 'ticker': ticker, 'label': label, 'fiscal_year': fy, 'period': period})
+            out.append({'phrase': m.group(0), 'ticker': ticker, 'label': label, 'fiscal_year': fy, 'period': period,
+                        'calendar_year': calendar_year})
     return out
 
 
@@ -110,8 +130,14 @@ def period_note(resolved: list[dict], today: date) -> str:
     """'(Resolved from today's date, 2026-10-02: "next fiscal year" means NVDA FY2028.)' or '' if nothing resolved."""
     if not resolved:
         return ''
-    by_phrase: dict[str, list[str]] = {}
+    by_phrase: dict[str, list[dict]] = {}
     for r in resolved:
-        by_phrase.setdefault(r['phrase'], []).append(r['label'])
-    parts = [f'"{p}" means {", ".join(labels)}' for p, labels in by_phrase.items()]
-    return f"(Resolved from today's date, {today.isoformat()}: {'; '.join(parts)}.)"
+        by_phrase.setdefault(r['phrase'], []).append(r)
+    parts = []
+    for phrase, rows in by_phrase.items():
+        parts.append(f'"{phrase}" means {", ".join(r["label"] for r in rows)}')
+    note = f"(Resolved from today's date, {today.isoformat()}: {'; '.join(parts)}.)"
+    if any(r.get('calendar_year') and ' (' in r['label'] for r in resolved):
+        # Not "calendar 2025": the model reads that as fiscal 2025 and fetches the wrong year (NVIDIA, 3 of 3 runs).
+        note = note[:-1] + " Say which fiscal year each figure is for.)"
+    return note

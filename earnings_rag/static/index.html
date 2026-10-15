@@ -1003,7 +1003,7 @@ function renderPanel(t, d) {
 
   if (d.resolved_periods && d.resolved_periods.length) {
     panel.append(el("h3", null, "Periods resolved"));
-    for (const r of d.resolved_periods) panel.append(checkRow("info", `“${r.phrase}” → ${r.ticker} ${r.label}`));
+    for (const r of d.resolved_periods) panel.append(checkRow("info", `“${r.phrase}”${r.calendar_year ? ` (calendar ${r.calendar_year})` : ""} → ${r.label}`));
   }
 
   panel.append(el("h3", null, "Steps"));

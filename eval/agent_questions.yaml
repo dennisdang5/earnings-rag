@@ -86,7 +86,27 @@
   as_of: '2026-10-08'
   expect:
     first_search: {company: COF, fiscal_year: 2025}
-  known_issue: 'searches FY2026 first, then FY2025 after a revision'
+
+- id: aapl-last-year
+  question: "What contributed the most to Apple's revenue last year?"
+  as_of: '2026-10-15'
+  expect:
+    contains: [['FY2025', 'fiscal 2025', 'fiscal year 2025']]
+    not_contains: ['is not available', 'not available']
+
+- id: nvda-last-year
+  question: "What was NVIDIA's revenue last year?"
+  as_of: '2026-10-15'
+  expect:
+    contains: [['FY2026', 'fiscal 2026', 'fiscal year 2026']]
+    not_contains: ['not available']
+
+- id: aapl-last-fiscal-year
+  question: "What did Apple report in its last fiscal year?"
+  as_of: '2026-10-15'
+  expect:
+    not_available_first: true
+  known_issue: 'FY2026 has no 10-K, but its Q1-Q3 facts exist, so the agent adds up three quarters and presents them as the fiscal year (one run summed net income wrongly without calculate)'
 
 # --- numbers ---
 - id: aapl-gross-margin-fy2024

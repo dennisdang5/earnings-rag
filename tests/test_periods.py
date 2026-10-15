@@ -94,3 +94,51 @@ def test_a_resolved_year_counts_as_asked_for_by_the_missing_filing_check():
     result = run_agent('What did NVIDIA say in Q2 of next fiscal year?', client, tools=[search], filings=FILINGS,
                        today=TODAY)
     assert result.revised and result.unacknowledged_missing == ['NVDA Q2 FY2028 10-Q']
+
+
+# --- calendar years: a bare "last/this/next year" -----------------------------------------------------------------
+
+def test_fiscal_year_for_a_calendar_year_is_the_one_that_overlaps_it_most():
+    assert Calendar(FILINGS[0]).fiscal_year_for_calendar(2025) == (2025, 270)    # Apple: Oct 2024 - Sep 2025
+    assert Calendar(FILINGS[1]).fiscal_year_for_calendar(2025) == (2025, 365)    # Capital One: the same span
+    assert Calendar(FILINGS[3]).fiscal_year_for_calendar(2025) == (2026, 340)    # NVIDIA: Feb 2025 - Jan 2026
+    assert Calendar(FILINGS[3]).fiscal_year_for_calendar(2027) == (2028, 340)
+
+
+def test_last_year_is_the_calendar_year_mapped_to_each_companys_closest_fiscal_year():
+    # the bug: "last year" meant Apple FY2026, which has no 10-K yet, so answers opened with "not available"
+    assert labels('What contributed the most to Apple revenue last year?') == [
+        'AAPL FY2025 (2024-09-28 to 2025-09-27)']
+    assert labels('How did NVIDIA do last year?') == ['NVDA FY2026 (2025-01-26 to 2026-01-25)']
+    assert labels("What was Capital One's revenue last year?") == ['COF FY2025']       # same span: no caveat
+
+
+def test_this_year_and_next_year_are_calendar_years_too():
+    assert labels('What was Apple revenue this year?') == ['AAPL FY2026 (2025-09-28 to 2026-09-27)']
+    assert labels("What is Capital One's revenue this year?") == ['COF FY2026']
+    assert labels('What will NVIDIA revenue be next year?') == ['NVDA FY2028 (2027-01-26 to 2028-01-25)']
+
+
+def test_fiscal_year_wording_keeps_the_fiscal_reading():
+    assert labels('What did Apple report in its last fiscal year?') == ['AAPL FY2026']
+    assert labels('What did NVIDIA report in the previous fiscal year?') == ['NVDA FY2026']
+
+
+def test_annual_report_this_year_is_the_newest_10k_in_every_wording():
+    assert labels("What does Capital One's annual report this year say about credit risk?") == ['COF FY2025']
+    assert labels("What does Capital One's 10-K this year say about credit risk?") == ['COF FY2025']
+
+
+def test_the_note_gives_the_fiscal_years_and_dates_and_never_says_calendar():
+    resolved = resolve_periods('How did revenue change last year?', FILINGS, TODAY)
+    note = period_note(resolved, TODAY)
+    assert note == ("(Resolved from today's date, 2026-10-02: \"last year\" means "
+                    'AAPL FY2025 (2024-09-28 to 2025-09-27), COF FY2025, NVDA FY2026 (2025-01-26 to 2026-01-25). '
+                    'Say which fiscal year each figure is for.)')
+    # "calendar 2025" in the note made the model fetch fiscal 2025 for NVIDIA (3 of 3 runs, DECISIONS.md), so the
+    # calendar year stays on the result for the UI and out of the text the model reads
+    assert 'calendar' not in note
+    assert {r['calendar_year'] for r in resolved} == {2025}
+    # a year that matches the company's fiscal year exactly needs no request
+    assert 'Say which' not in period_note(resolve_periods("Capital One's revenue last year?", FILINGS, TODAY), TODAY)
+    assert 'Say which' not in period_note(resolve_periods('What did NVIDIA say last quarter?', FILINGS, TODAY), TODAY)
