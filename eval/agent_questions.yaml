@@ -1,7 +1,9 @@
 # Agent eval questions (run with eval/run_agent_eval.py, score with eval/score_agent_eval.py).
 # expect keys: contains (every entry must appear; a list entry is any-of, for formatting variants), not_contains,
 # refusal, not_available_first, searched (each entry must match some search_filings call; a list value is any-of),
-# first_search, min_calls / max_calls ({tool: n}). Every run is also checked for clean citation flags and for not
+# first_search, min_calls / max_calls ({tool: n}), and for follow-ups (a question with `history` goes through the
+# rewriter first): interpreted (false = must reach the agent as typed), interpreted_contains (like contains,
+# case-insensitive, on the standalone question), interpreted_not_contains. Every run is also checked for clean citation flags and for not
 # being cut off at max tokens. as_of fixes today's date for relative-period questions. known_issue marks a failure
 # already listed in CLAUDE.md, so the report separates it from a regression.
 
@@ -186,3 +188,90 @@
   expect:
     min_calls: {search_filings: 2}
   known_issue: 'hits agent_max_tokens (500) and is cut off; lists IP and ESG items as competition risks'
+
+# --- follow-ups (history = earlier turns, written by hand; the question is rewritten into a standalone one before the
+# agent runs, as /agent/stream does) ---
+- id: fu-company-swap
+  question: 'And Apple?'
+  history:
+    - question: "What was NVIDIA's revenue in fiscal 2025?"
+      answer: "NVIDIA's revenue in fiscal 2025 was $130,497 million [NVDA_revenue_FY2025]."
+  expect:
+    interpreted_contains: [['apple'], ['revenue'], ['2025']]
+    interpreted_not_contains: ['nvidia']
+    contains: ['AAPL_revenue_FY2025']
+
+- id: fu-year-before
+  question: 'What about the year before?'
+  history:
+    - question: "What was Apple's revenue in fiscal 2025?"
+      answer: "Apple's revenue in fiscal 2025 was $416,161 million [AAPL_revenue_FY2025]."
+  expect:
+    interpreted_contains: [['apple'], ['revenue'], ['2024']]
+    contains: ['AAPL_revenue_FY2024']
+
+- id: fu-metric-swap
+  question: 'What about its net income?'
+  history:
+    - question: "What was NVIDIA's revenue in fiscal 2025?"
+      answer: "NVIDIA's revenue in fiscal 2025 was $130,497 million [NVDA_revenue_FY2025]."
+  expect:
+    interpreted_contains: [['nvidia'], ['net income'], ['2025']]
+    contains: ['NVDA_net_income_FY2025']
+
+- id: fu-two-turns
+  question: 'And Capital One?'
+  history:
+    - question: "What was NVIDIA's revenue in fiscal 2025?"
+      answer: "NVIDIA's revenue in fiscal 2025 was $130,497 million [NVDA_revenue_FY2025]."
+    - question: 'And Apple?'
+      answer: "Apple's revenue in fiscal 2025 was $416,161 million [AAPL_revenue_FY2025]."
+  expect:
+    interpreted_contains: [['capital one'], ['revenue'], ['2025']]
+    interpreted_not_contains: ['apple', 'nvidia']
+    contains: ['COF_revenue_FY2025']
+
+- id: fu-out-of-scope-company
+  question: 'What about Tesla?'
+  history:
+    - question: "What was NVIDIA's revenue in fiscal 2025?"
+      answer: "NVIDIA's revenue in fiscal 2025 was $130,497 million [NVDA_revenue_FY2025]."
+  expect:
+    interpreted_contains: [['tesla']]
+    interpreted_not_contains: ['nvidia']
+    refusal: true
+    max_calls: {search_filings: 0}
+  known_issue: 'the Tesla scope rule is followed loosely: sometimes one search before the refusal'
+
+- id: fu-standalone-unchanged
+  question: "What contributed the most to Apple's revenue last year?"
+  as_of: '2026-10-15'
+  history:
+    - question: "What was NVIDIA's revenue in fiscal 2025?"
+      answer: "NVIDIA's revenue in fiscal 2025 was $130,497 million [NVDA_revenue_FY2025]."
+  expect:
+    interpreted: false
+    contains: [['FY2025', 'fiscal 2025', 'fiscal year 2025']]
+    not_contains: ['not available']
+
+- id: fu-relative-period
+  question: 'And Apple last quarter?'
+  as_of: '2026-10-15'
+  history:
+    - question: "What was NVIDIA's revenue in fiscal 2025?"
+      answer: "NVIDIA's revenue in fiscal 2025 was $130,497 million [NVDA_revenue_FY2025]."
+  expect:
+    interpreted_contains: [['apple'], ['last quarter']]
+    interpreted_not_contains: ['2025', '2026']
+    not_available_first: true   # Apple's Q4 FY2026 ended 2026-09-26 and its 10-K is not filed yet
+    contains: [['Q3 FY2026', 'third quarter of fiscal 2026']]
+
+- id: fu-why
+  question: 'Why did it grow so much?'
+  history:
+    - question: "How fast did NVIDIA's Data Center revenue grow in fiscal 2025?"
+      answer: "NVIDIA's Data Center revenue grew 142.37% in fiscal 2025 [calc_1], from $47,525 million [NVDA_revenue_FY2024_product_DataCenter] to $115,186 million [NVDA_revenue_FY2025_product_DataCenter]."
+  expect:
+    interpreted_contains: [['nvidia'], ['data center']]
+    min_calls: {search_filings: 1}
+  known_issue: 'the answer states passage figures (142%, 162%) without an id or with a calc id that does not state them, so the loop sends it back every run (same family as nvda-last-quarter-dc)'

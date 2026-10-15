@@ -11,6 +11,7 @@ from datetime import date
 from pathlib import Path
 from typing import Callable
 
+from earnings_rag.agent.followup import Rewrite, rewrite
 from earnings_rag.agent.loop import AgentResult, run_agent
 
 REFUSAL = 'The provided filings do not address this.'
@@ -19,23 +20,30 @@ NOT_AVAILABLE = re.compile(r'not (?:yet )?(?:available|been filed|filed)|no (?:s
 FLAGS = ('uncited', 'unknown_ids', 'unsupported', 'unacknowledged_missing', 'slice_mismatch')
 
 
-def to_record(question: dict, run: int, result: AgentResult) -> dict:
-    """One line of a run file: the spec's id and question, plus everything the scorers and the cost table read."""
+def to_record(question: dict, run: int, result: AgentResult, rw: Rewrite | None = None) -> dict:
+    """One line of a run file: the spec's id and question, plus everything the scorers and the cost table read.
+    For a follow-up, `interpreted` is the standalone question the agent was asked (None when it was left as typed)."""
     return {'id': question['id'], 'question': question['question'], 'run': run, 'as_of': question.get('as_of'),
+            'interpreted': rw.question if rw and rw.changed else None,
+            'rewrite_input_tokens': rw.input_tokens if rw else 0, 'rewrite_output_tokens': rw.output_tokens if rw else 0,
             **asdict(result), 'input_tokens': result.input_tokens, 'output_tokens': result.output_tokens,
             'model_calls': len(result.usage), 'tool_calls': len(result.trace)}
 
 
-def run_questions(questions: list[dict], repeats: int, client, out: Path, run_fn: Callable = run_agent) -> int:
+def run_questions(questions: list[dict], repeats: int, client, out: Path, run_fn: Callable = run_agent,
+                  rewrite_fn: Callable = rewrite) -> int:
     """Run every question `repeats` times, appending each record to `out` as soon as it finishes (a crash or Ctrl-C
-    keeps what ran). `as_of` fixes today's date so relative-period questions mean the same thing next month."""
+    keeps what ran). `as_of` fixes today's date so relative-period questions mean the same thing next month. A
+    question with `history` (earlier turns, written by hand so the run does not depend on a live first answer) goes
+    through the follow-up rewriter first, as /agent/stream does, and the agent is asked the rewritten question."""
     out.parent.mkdir(parents=True, exist_ok=True)
     count = 0
     with out.open('a', encoding='utf-8') as f:
         for q in questions:
             today = date.fromisoformat(q['as_of']) if q.get('as_of') else None
             for run in range(1, repeats + 1):
-                record = to_record(q, run, run_fn(q['question'], client, today=today))
+                rw = rewrite_fn(q['question'], q.get('history', []), client)
+                record = to_record(q, run, run_fn(rw.question, client, today=today), rw)
                 f.write(json.dumps(record) + '\n')
                 f.flush()
                 count += 1
@@ -77,6 +85,16 @@ def score_run(expect: dict, record: dict) -> dict[str, bool]:
         checks['not_available_first'] = bool(NOT_AVAILABLE.search(answer[:300]))
     for i, want in enumerate(expect.get('searched', [])):   # each entry needs some search_filings call matching it
         checks[f'searched[{i}]'] = any(args_match(a, want) for a in calls(record, 'search_filings'))
+    interpreted = record.get('interpreted')
+    if 'interpreted' in expect:   # false: the question must reach the agent as typed
+        checks['interpreted'] = (interpreted is None) == (not expect['interpreted'])
+    if 'interpreted_contains' in expect:   # same shape as `contains`, case-insensitive, on the standalone question
+        text = (interpreted or '').lower()
+        checks['interpreted_contains'] = all(any(s.lower() in text for s in ([e] if isinstance(e, str) else e))
+                                             for e in expect['interpreted_contains'])
+    if 'interpreted_not_contains' in expect:
+        checks['interpreted_not_contains'] = not any(s.lower() in (interpreted or '').lower()
+                                                     for s in expect['interpreted_not_contains'])
     if 'first_search' in expect:
         first = calls(record, 'search_filings')[:1]
         checks['first_search'] = bool(first) and args_match(first[0], expect['first_search'])

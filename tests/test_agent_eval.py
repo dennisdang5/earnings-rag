@@ -113,8 +113,42 @@ def test_question_file_is_well_formed():
     ids = [q['id'] for q in questions]
     assert len(ids) == len(set(ids))
     allowed = {'contains', 'not_contains', 'refusal', 'not_available_first', 'searched', 'first_search',
-               'min_calls', 'max_calls'}
+               'min_calls', 'max_calls', 'interpreted', 'interpreted_contains', 'interpreted_not_contains'}
     for q in questions:
         assert q['question'] and set(q.get('expect', {})) <= allowed, q['id']
+        for turn in q.get('history', []):
+            assert turn['question'] and turn['answer'], q['id']
+        if any(k.startswith('interpreted') for k in q.get('expect', {})):
+            assert q.get('history'), q['id']   # nothing to interpret without earlier turns
         if q.get('as_of'):
             date.fromisoformat(q['as_of'])
+
+
+def test_interpreted_checks():
+    rec = record(interpreted="What was Apple's revenue in fiscal 2025?")
+    expect = {'interpreted_contains': [['apple'], ['revenue'], ['2025']], 'interpreted_not_contains': ['nvidia']}
+    assert score_run(expect, rec)['interpreted_contains'] and score_run(expect, rec)['interpreted_not_contains']
+    assert not score_run({'interpreted_contains': [['tesla']]}, rec)['interpreted_contains']
+    assert not score_run({'interpreted_not_contains': ['apple']}, rec)['interpreted_not_contains']
+    assert score_run({'interpreted': False}, record(interpreted=None))['interpreted']
+    assert not score_run({'interpreted': False}, rec)['interpreted']
+    assert not score_run({'interpreted_contains': [['apple']]}, record(interpreted=None))['interpreted_contains']
+
+
+def test_runner_rewrites_a_follow_up_before_the_agent_and_records_it(tmp_path):
+    from earnings_rag.agent.followup import Rewrite
+    out, asked = tmp_path / 'r.jsonl', []
+
+    def run_fn(question, client, today=None):
+        asked.append(question)
+        return run_agent(question, client, today=today, filings=[])
+
+    questions = [{'id': 'f', 'question': 'And Apple?', 'history': [{'question': 'a', 'answer': 'b'}], 'expect': {}},
+                 {'id': 'g', 'question': 'Plain question?', 'expect': {}}]
+    rewrite_fn = lambda q, h, c: Rewrite('Apple revenue fiscal 2025?', q, True, 120, 12) if h else Rewrite(q, q, False)
+    client = FakeClient(answer('One.'), answer('Two.'))
+    run_questions(questions, 1, client, out, run_fn=run_fn, rewrite_fn=rewrite_fn)
+    assert asked == ['Apple revenue fiscal 2025?', 'Plain question?']
+    first, second = load_records(out)
+    assert first['question'] == 'And Apple?' and first['interpreted'] == 'Apple revenue fiscal 2025?'
+    assert first['rewrite_input_tokens'] == 120 and second['interpreted'] is None and second['rewrite_input_tokens'] == 0
