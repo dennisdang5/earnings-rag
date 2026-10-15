@@ -35,11 +35,29 @@ PERIOD_ORDER = {'Q1': 1, 'Q2': 2, 'Q3': 3, 'Q4': 4, 'FY': 5}
 DERIVATIONS = {'Q2': ('H1', 'Q1'), 'Q3': ('M9', 'H1'), 'Q4': ('FY', 'M9')}
 
 
+# The filings a figure may be cited from. The SEC's companyfacts also carries rows from proxy statements (DEF 14A),
+# prospectuses (424B*), 8-Ks and registration statements. "Latest filing wins" let one of them replace the annual
+# report as a figure's source (NVIDIA net income cited a DEF 14A, with the same value), so only reports count.
+REPORT_FORMS = frozenset({'10-K', '10-K/A', '10-KT', '10-KT/A', '10-Q', '10-Q/A', '10-QT'})
+
+
+def reports_only(companyfacts: dict) -> dict:
+    """A copy of the SEC's facts keeping only rows filed in an annual or quarterly report (REPORT_FORMS)."""
+    facts = {namespace: {concept: {**c, 'units': {unit: [r for r in rows if r.get('form') in REPORT_FORMS]
+                                                  for unit, rows in c['units'].items()}}
+                         for concept, c in concepts.items()}
+             for namespace, concepts in companyfacts['facts'].items()}
+    return {**companyfacts, 'facts': facts}
+
+
 def fetch_companyfacts(ticker: str, refresh: bool = False) -> dict:
-    """Download (and cache, like the 10-K files) the SEC's XBRL facts for one company."""
+    """
+    Download (and cache, like the 10-K files) the SEC's XBRL facts for one company. The cache keeps the raw download;
+    what is returned has only rows from annual and quarterly reports (reports_only).
+    """
     path = settings.data_dir / 'xbrl' / f'{ticker}.json'
     if path.exists() and not refresh:
-        return json.loads(path.read_text(encoding='utf-8'))
+        return reports_only(json.loads(path.read_text(encoding='utf-8')))
 
     # Imported here because ingest raises at import time when SEC_USER_AGENT is unset (as in CI),
     # and normalize() must stay importable without it.
@@ -53,7 +71,7 @@ def fetch_companyfacts(ticker: str, refresh: bool = False) -> dict:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data), encoding='utf-8')
     time.sleep(0.15)
-    return data
+    return reports_only(data)
 
 
 def _days(row: dict) -> int:

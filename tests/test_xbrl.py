@@ -3,7 +3,7 @@ from datetime import date
 import pytest
 
 from earnings_rag import xbrl
-from earnings_rag.xbrl import normalize, find_splits, split_factor, check_split_consistency
+from earnings_rag.xbrl import normalize, find_splits, split_factor, check_split_consistency, reports_only
 
 M = 1_000_000
 
@@ -426,3 +426,36 @@ def test_balance_is_labelled_by_its_date_and_never_derived():
 def test_period_after_the_last_annual_fact_gets_its_balance_in_the_year_in_progress():
     out = by_period(normalize(cof_deposits_facts(instant('2025-03-31', 367, '2025-05-01')), 'COF'), 'deposits')
     assert out[(2025, 'Q1')]['value'] == 367
+
+
+# --- only annual and quarterly reports are a source --------------------------------------------------------------
+
+def test_reports_only_keeps_reports_and_their_amendments_and_drops_everything_else():
+    rows = [fact('2024-01-29', '2025-01-26', 1, form=f, accn=f) for f in
+            ('10-K', '10-K/A', '10-KT', '10-Q', '10-Q/A', 'DEF 14A', '8-K', '424B5', 'S-8', 'PRE 14A')]
+    raw = {'cik': 1, 'facts': {'us-gaap': {'Revenues': {'label': 'x', 'units': {'USD': rows}}},
+                               'dei': {'EntityCommonStockSharesOutstanding': {'units': {'shares': [
+                                   {'end': '2025-02-01', 'val': 5, 'accn': 'c', 'form': '10-K', 'filed': '2025-02-26'}]}}}}}
+    out = reports_only(raw)
+    kept = [r['form'] for r in out['facts']['us-gaap']['Revenues']['units']['USD']]
+    assert kept == ['10-K', '10-K/A', '10-KT', '10-Q', '10-Q/A']
+    assert out['cik'] == 1 and out['facts']['us-gaap']['Revenues']['label'] == 'x'      # everything else is carried over
+    assert len(out['facts']['dei']['EntityCommonStockSharesOutstanding']['units']['shares']) == 1
+    assert len(raw['facts']['us-gaap']['Revenues']['units']['USD']) == 10               # the input is not modified
+
+
+def test_a_later_proxy_statement_no_longer_replaces_the_annual_report_as_a_figures_source():
+    # JPMorgan FY2021 net income: the 10-K says 48,334; the proxy statement filed years later rounds it to 48,300
+    income = [fact('2021-01-01', '2021-12-31', 48_334 * M, filed='2022-02-22', form='10-K', accn='10k'),
+              fact('2021-01-01', '2021-12-31', 48_300 * M, filed='2026-04-06', form='DEF 14A', accn='proxy')]
+    raw = companyfacts(('NetIncomeLoss', 'USD', income))
+    before = by_period(normalize(raw, 'JPM'), 'net_income')[(2021, 'FY')]
+    assert (before['value'], before['form']) == (48_300 * M, 'DEF 14A')                # the bug: latest filing wins
+    after = by_period(normalize(reports_only(raw), 'JPM'), 'net_income')[(2021, 'FY')]
+    assert (after['value'], after['form'], after['accession']) == (48_334 * M, '10-K', '10k')
+
+
+def test_a_period_only_a_proxy_reports_is_not_stored():
+    # Caterpillar tags net income as ProfitLoss in its 10-K; NetIncomeLoss exists only in the proxy statement
+    raw = companyfacts(('NetIncomeLoss', 'USD', [fact('2022-01-01', '2022-12-31', 6_705 * M, form='DEF 14A', accn='p')]))
+    assert by_period(normalize(reports_only(raw), 'CAT'), 'net_income') == {}
