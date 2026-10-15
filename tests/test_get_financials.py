@@ -225,3 +225,89 @@ def test_q4_breakdown_of_a_balance_points_to_the_year_end_not_a_subtraction(monk
     out, seen = call_breakdown(monkeypatch, available=(('loans', 'segment', 2023, 2026),),
                                company='COF', metric='loans', breakdown='segment', period='Q4')
     assert 'FY - Q1' in out['error'] and 'cannot be derived' in out['error'] and not seen
+
+
+# --- a fiscal year with quarters but no annual row ---------------------------------------------------------------
+
+APPLE_10K = {'ticker': 'AAPL', 'form': '10-K', 'period': '2025-09-27', 'fiscal_year': 2025, 'fiscal_period': 'FY'}
+
+
+def quarter(period, end, **over):
+    return row(**{'ticker': 'AAPL', 'fiscal_year': 2026, 'fiscal_period': period, 'period_end': end, 'form': '10-Q',
+                  'value': 100_000_000_000.0, 'filed': date(2026, 8, 1), **over})
+
+
+def incomplete_setup(monkeypatch, rows, today, ten_ks=(APPLE_10K,)):
+    """get_facts honours the fiscal_period filter, as the real one does; the calendar and today are fixed."""
+    def fake_get_facts(ticker, metric, fiscal_year, fiscal_period, limit):
+        return [r for r in rows if r['fiscal_year'] == fiscal_year and fiscal_period in (None, r['fiscal_period'])]
+
+    monkeypatch.setattr(tools_module, 'get_facts', fake_get_facts)
+    monkeypatch.setattr(tools_module, 'available_metrics', lambda t: ['revenue'])
+    monkeypatch.setattr(tools_module, 'available_breakdowns', lambda t, corporate: [])
+    monkeypatch.setattr(tools_module, 'fact_years', lambda t, m: (2020, 2025))
+    monkeypatch.setattr(tools_module, 'text_periods', lambda company: list(ten_ks))
+    monkeypatch.setattr(tools_module, '_today', lambda: today)
+
+
+Q123 = [quarter('Q1', date(2025, 12, 27)), quarter('Q2', date(2026, 3, 28)), quarter('Q3', date(2026, 6, 27))]
+
+
+def get(**args):
+    return json.loads(GET_FINANCIALS.call(json.dumps({'company': 'AAPL', 'metric': 'revenue', **args})))
+
+
+def test_a_year_that_ended_without_a_10k_returns_the_quarters_and_says_the_10k_is_missing(monkeypatch):
+    incomplete_setup(monkeypatch, Q123, today=date(2026, 10, 15))
+    for args in ({'fiscal_year': 2026}, {'fiscal_year': 2026, 'period': 'FY'}, {'fiscal_year': 2026, 'period': 'Q4'}):
+        r = get(**args)
+        assert [x['id'] for x in r['results']] == ['AAPL_revenue_FY2026Q1', 'AAPL_revenue_FY2026Q2', 'AAPL_revenue_FY2026Q3']
+        assert r['incomplete_year'] == {'fiscal_year': 2026, 'reported_periods': ['Q1', 'Q2', 'Q3'], 'ended': True,
+                                        'ends': '2026-09-27'}
+        assert 'ended in September 2026, but its 10-K has not been filed' in r['note']
+        assert 'not available yet because the 10-K has not been filed yet' in r['note']
+        assert 'first 3 quarters' in r['note']
+        assert r['missing_filing'] == {'label': 'AAPL FY2026 10-K', 'fiscal_year': 2026}
+
+
+def test_a_year_still_in_progress_says_it_has_not_ended(monkeypatch):
+    incomplete_setup(monkeypatch, Q123[:2], today=date(2026, 7, 1))
+    r = get(fiscal_year=2026)
+    assert r['incomplete_year'] == {'fiscal_year': 2026, 'reported_periods': ['Q1', 'Q2'], 'ended': False, 'ends': '2026-09-27'}
+    assert 'has not ended yet (it ends in September 2026)' in r['note'] and 'because the fiscal year has not ended yet' in r['note']
+    assert 'first 2 quarters' in r['note']
+
+
+def test_a_complete_year_and_quarter_requests_are_untouched(monkeypatch):
+    fy = quarter('FY', date(2026, 9, 27), form='10-K')
+    incomplete_setup(monkeypatch, Q123 + [fy], today=date(2026, 12, 1))
+    assert 'incomplete_year' not in get(fiscal_year=2026)           # the FY row exists
+    assert 'incomplete_year' not in get(fiscal_year=2026, period='FY')
+    incomplete_setup(monkeypatch, Q123, today=date(2026, 10, 15))
+    assert 'incomplete_year' not in get(fiscal_year=2026, period='Q3')   # a quarter that exists is just returned
+    assert 'incomplete_year' not in get()                                 # no year asked for: latest rows as before
+
+
+def test_no_quarters_either_keeps_the_old_no_data_note(monkeypatch):
+    incomplete_setup(monkeypatch, [], today=date(2026, 10, 15))
+    r = get(fiscal_year=2031)
+    assert r['results'] == [] and 'No matching data' in r['note'] and 'incomplete_year' not in r
+
+
+def test_without_a_10k_to_anchor_the_calendar_it_still_says_the_year_is_not_complete(monkeypatch):
+    incomplete_setup(monkeypatch, Q123, today=date(2026, 10, 15), ten_ks=())
+    r = get(fiscal_year=2026)
+    assert r['incomplete_year']['ends'] is None and 'is not complete' in r['note']
+
+
+def test_an_answer_that_never_says_the_annual_figures_are_missing_is_sent_back(monkeypatch):
+    incomplete_setup(monkeypatch, Q123, today=date(2026, 10, 15))
+    client = FakeClient(
+        tool_request('get_financials', '{"company": "AAPL", "metric": "revenue", "fiscal_year": 2026}'),
+        answer('Apple revenue for fiscal 2026 was $100,000 million [AAPL_revenue_FY2026Q3].'),
+        answer('The annual figures for fiscal 2026 are not available yet because the 10-K has not been filed. '
+               'Q3 FY2026 revenue was $100,000 million [AAPL_revenue_FY2026Q3].'))
+    result = run_agent('What was Apple revenue in fiscal 2026?', client, filings=[APPLE_10K], today=date(2026, 10, 15))
+    assert result.revised and result.unacknowledged_missing == []
+    assert 'not available yet' in result.answer
+    assert 'AAPL FY2026 10-K' in client.requests[2]['messages'][-1]['content']
