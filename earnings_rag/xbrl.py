@@ -470,7 +470,7 @@ def ingest_facts(refresh: bool = False) -> None:
               f'{len(bad) - len(split_sized)} restatements')
         for b in split_sized[:5]:
             print(f'  mismatch {b["metric"]} {b["period"]}: {b["readings"]}')
-        found.append((None, 'split_check', f'{checked} periods, {len(split_sized)} split-sized mismatches, '
+        found.append(('eps_diluted', 'split_check', f'{checked} periods, {len(split_sized)} split-sized mismatches, '
                                            f'{len(bad) - len(split_sized)} restatements'))
         if checked and len(split_sized) / checked > MAX_MISMATCH_RATE:
             replace_ingest_decisions(ticker, found + [(None, 'not_stored', 'split adjustment looks wrong')])

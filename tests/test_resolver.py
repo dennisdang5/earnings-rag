@@ -32,6 +32,7 @@ def test_disagreeing_synonyms_are_accepted_when_an_identity_confirms_the_largest
     res = resolve(cf, 'XYZ')
     assert res.primary['revenue'] == 'Revenues'                      # 100 - 60 = 40 = gross profit
     assert ('revenue: revenue - cost = gross profit', True) in res.checks
+    assert all(label in res.check_scope for label, _ in res.checks)   # every check names the metrics it is about
 
 
 def test_disagreeing_synonyms_without_a_confirming_identity_are_skipped_with_the_reason():
@@ -149,3 +150,14 @@ def test_decisions_mirror_the_report_as_rows():
     assert ('loans', 'override', 'pinned to LoansAndLeasesReceivable') in rows
     assert any(m == 'gross_profit' and k == 'stale' and d.endswith('not stored') for m, k, d in rows)
     assert (None, 'check_differs', 'gp = rev - cost') in rows
+
+
+def test_checks_are_tagged_with_the_metrics_they_cover():
+    from earnings_rag.resolver import Resolution, _check, decisions
+    res = Resolution(notes=['cost_of_revenue: the income statement uses X'])
+    _check(res, 'gross profit = revenue - cost', False, 'gross_profit', 'revenue', 'cost_of_revenue')
+    _check(res, 'pre-tax income - tax ~ net income (1%)', True, 'pretax_income', 'net_income')
+    rows = decisions(res)
+    assert [m for m, k, d in rows if d == 'gross profit = revenue - cost'] == ['gross_profit', 'revenue', 'cost_of_revenue']
+    assert ('pretax_income', 'check_ok', 'pre-tax income - tax ~ net income (1%)') in rows
+    assert ('cost_of_revenue', 'note', 'cost_of_revenue: the income statement uses X') in rows

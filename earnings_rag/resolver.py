@@ -71,6 +71,7 @@ class Resolution:
     absent: list[str] = field(default_factory=list)              # metrics the company does not report
     pinned: list[tuple[str, str]] = field(default_factory=list)  # overrides that applied
     checks: list[tuple[str, bool]] = field(default_factory=list)  # accounting identities, report-only
+    check_scope: dict[str, tuple[str, ...]] = field(default_factory=dict)  # check label -> metrics it covers
     suggestions: dict[str, list[str]] = field(default_factory=dict)
     discontinued: list[str] = field(default_factory=list)       # metrics no longer reported (2+ fiscal years behind): not stored
     stale: dict[str, int] = field(default_factory=dict)          # metric -> last fiscal year reported, if before the company's latest
@@ -79,6 +80,17 @@ class Resolution:
     is_bank: bool = False
     latest_fy: int | None = None
     no_data: bool = False
+
+
+# Metrics an identity that confirmed a choice is built from, besides the metric itself
+IDENTITY_PARTS = {'revenue': ('net_interest_income', 'noninterest_income', 'gross_profit', 'cost_of_revenue'),
+                  'cost_of_revenue': ('gross_profit', 'revenue')}
+
+
+def _check(res: 'Resolution', label: str, ok: bool, *metrics: str) -> None:
+    """Record a report-only check and the metrics it is about (the panel shows it only beside those)."""
+    res.checks.append((label, ok))
+    res.check_scope[label] = metrics
 
 
 def _days(r: dict) -> int:
@@ -213,7 +225,7 @@ def resolve(companyfacts: dict, ticker: str) -> Resolution:
             concept = pos[metric]
             if any(True for _ in _rows(gaap, concept, spec['unit'])):
                 found = {concept: _value_at(gaap, concept, spec['unit'], end)}
-                res.checks.append((f'{metric}: no synonym matched; taken from the income statement ({concept})', True))
+                _check(res, f'{metric}: no synonym matched; taken from the income statement ({concept})', True, metric)
             else:
                 res.notes.append(f'{metric}: the income statement uses {concept}, which is not in the SEC facts '
                                  f'(its values would need the 10-K HTML)')
@@ -229,7 +241,7 @@ def resolve(companyfacts: dict, ticker: str) -> Resolution:
             on = [c for c in current if c in on_tree]
             if len(on) == 1:
                 forced = on[0]  # exactly one of the competing concepts is a line of the company's income statement
-                res.checks.append((f'{metric}: only {forced} is on the income statement', True))
+                _check(res, f'{metric}: only {forced} is on the income statement', True, metric)
             elif metric == 'revenue':
                 confirmed = _revenue_identities(top, cost, v)
             elif metric == 'cost_of_revenue':
@@ -241,7 +253,7 @@ def resolve(companyfacts: dict, ticker: str) -> Resolution:
                                        + ', '.join(f'{c}={x / 1e6:,.0f}M' for c, x in current.items()))
                 continue
             if not forced:
-                res.checks.append((f'{metric}: {confirmed[0]}', True))
+                _check(res, f'{metric}: {confirmed[0]}', True, metric, *IDENTITY_PARTS.get(metric, ()))
 
         primary = forced or (max(current, key=current.get) if current else next(iter(found)))
 
@@ -282,22 +294,22 @@ def resolve(companyfacts: dict, ticker: str) -> Resolution:
 
     # report-only identities that did not decide anything: a flag for a human, not a gate
     if v['gp'] is not None and revenue is not None and cost is not None:
-        res.checks.append(('gross profit = revenue - cost', _close(revenue - cost, v['gp'])))
+        _check(res, 'gross profit = revenue - cost', _close(revenue - cost, v['gp']), 'gross_profit', 'revenue', 'cost_of_revenue')
     if v['pretax'] is not None and v['tax'] is not None and v['ni'] is not None:
-        res.checks.append(('pre-tax income - tax ~ net income (1%)',
-                           abs(v['pretax'] - v['tax'] - v['ni']) <= 0.01 * abs(v['ni'])))
+        _check(res, 'pre-tax income - tax ~ net income (1%)',
+               abs(v['pretax'] - v['tax'] - v['ni']) <= 0.01 * abs(v['ni']), 'pretax_income', 'net_income')
 
     for metric in ('revenue', 'pretax_income', 'cost_of_revenue', 'provision_for_credit_losses'):
         if metric in pos and metric in res.primary:
             unit = METRICS[metric]['unit']
             if pos[metric] == res.primary[metric]:
-                res.checks.append((f'income statement confirms {metric} = {pos[metric]}', True))
+                _check(res, f'income statement confirms {metric} = {pos[metric]}', True, metric)
             elif _close(_value_at(gaap, pos[metric], unit, end), _value_at(gaap, res.primary[metric], unit, end)):
                 res.checks.append((f'income statement has {metric} = {pos[metric]}, the same figure as the resolver\'s '
                                    f'{res.primary[metric]}', True))
             else:
-                res.checks.append((f'{metric}: income statement has {pos[metric]}, resolver chose '
-                                   f'{res.primary[metric]}', False))
+                _check(res, f'{metric}: income statement has {pos[metric]}, resolver chose '
+                       f'{res.primary[metric]}', False, metric)
 
     res.missing_core = [m for m in CORE if m not in res.chosen]
     if 'revenue' in res.missing_core:
@@ -314,8 +326,10 @@ def decisions(res: Resolution) -> list[tuple[str | None, str, str]]:
     out += [(m, 'override', f'pinned to {concept}') for m, concept in res.pinned]
     out += [(m, 'stale', f'last reported for FY{y}, the latest year is FY{res.latest_fy}'
              + ('; not stored' if m in res.discontinued else '')) for m, y in res.stale.items()]
-    out += [(None, 'note', n) for n in res.notes]
-    out += [(None, 'check_ok' if ok else 'check_differs', label) for label, ok in res.checks]
+    out += [(n.split(':')[0] if n.split(':')[0] in METRICS else None, 'note', n) for n in res.notes]
+    for label, ok in res.checks:
+        kind = 'check_ok' if ok else 'check_differs'
+        out += [(m, kind, label) for m in res.check_scope.get(label, ())] or [(None, kind, label)]
     out += [(m, 'missing_core', 'core metric could not be resolved') for m in res.missing_core]
     return out
 
