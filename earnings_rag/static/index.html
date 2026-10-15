@@ -52,8 +52,6 @@
     font-weight: 500; overflow-wrap: anywhere;
   }
 
-  .interp { margin: -8px 0 14px auto; max-width: 90%; text-align: right; color: var(--muted); font-size: 0.85rem; overflow-wrap: anywhere; }
-
   .steps { list-style: none; margin: 0 0 14px; padding: 0; font-size: 0.88rem; color: var(--muted); }
   .steps li { display: flex; gap: 10px; align-items: baseline; padding: 3px 0; }
   .dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--rule); transform: translateY(-1px); }
@@ -421,12 +419,11 @@ function createTurn(question) {
   const t = {
     question, text: "", items: [], cards: [], sweepTimer: null, pending: [], revisions: [],
     el: el("article", "turn"), progress: el("p", "progress"), answer: el("div", "answer"),
-    interp: el("p", "interp"), note: el("p", "note"), steps: el("ol", "steps"), passages: el("div"), sources: el("div", "sources"),
+    note: el("p", "note"), steps: el("ol", "steps"), passages: el("div"), sources: el("div", "sources"),
     panelToggle: el("button", "toggle"), sourcesToggle: el("button", "toggle"), toggles: el("div", "toggles"),
     panel: el("div", "panel"), flags: el("p", "flagline"), chart: el("div"), followups: el("div", "followups"),
   };
   t.note.hidden = true;
-  t.interp.hidden = true;
   t.sources.hidden = true;
   t.sources.append(t.passages);
   t.panel.hidden = true;
@@ -438,7 +435,7 @@ function createTurn(question) {
   t.panelToggle.addEventListener("click", () => setPanelOpen(t, t.panel.hidden));
   t.sourcesToggle.addEventListener("click", () => setSourcesOpen(t, t.sources.hidden));
   t.toggles.append(t.panelToggle, t.sourcesToggle);
-  t.el.append(el("p", "turn-q", question), t.interp, t.steps, t.progress, t.answer, t.chart, t.flags, t.note, t.toggles, t.panel, t.sources, t.followups);
+  t.el.append(el("p", "turn-q", question), t.steps, t.progress, t.answer, t.chart, t.flags, t.note, t.toggles, t.panel, t.sources, t.followups);
   thread.append(t.el);
 
   t.answer.addEventListener("click", (e) => {
@@ -542,10 +539,7 @@ async function runAgent(t, question, signal) {
   t.progress.textContent = "Thinking…";
   let details = null;
   await stream("/agent/stream", { question, history: historyFor(t) }, signal, ({ event, data }) => {
-    if (event === "interpreted") {
-      t.interp.textContent = "Interpreted as: " + data.question;
-      t.interp.hidden = false;
-    } else if (event === "status") {
+    if (event === "status") {
       t.progress.textContent = data.stage === "writing" ? "Writing the answer…" : "Thinking…";
     } else if (event === "tool_call") {
       addStep(t, describeCall(data.tool, data.arguments));
@@ -1015,7 +1009,7 @@ function renderPanel(t, d) {
 
   if (d.interpreted) {
     panel.append(el("h3", null, "Question interpreted"));
-    panel.append(checkRow("info", "Read as a standalone question: " + d.interpreted));
+    panel.append(checkRow("info", "Your follow-up was read as: " + d.interpreted));
   }
 
   if (d.resolved_periods && d.resolved_periods.length) {
