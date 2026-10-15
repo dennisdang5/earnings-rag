@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Ask the filings</title>
+<link rel="icon" href="data:,">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;700&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&display=swap" rel="stylesheet">
@@ -35,16 +36,6 @@
     letter-spacing: -0.02em; margin: 0 0 12px;
   }
   .lede { color: var(--muted); margin: 0; font-size: 1.02rem; }
-
-  .modes {
-    display: inline-flex; margin: 18px auto 0; padding: 3px; gap: 2px;
-    border: 1px solid var(--rule); border-radius: 999px; background: var(--sheet);
-  }
-  .mode {
-    border: 0; background: transparent; color: var(--muted); border-radius: 999px;
-    padding: 6px 16px; font: 500 0.88rem var(--sans); cursor: pointer;
-  }
-  .mode[aria-checked="true"] { background: var(--ink); color: var(--sheet); }
 
   .thread { max-width: 760px; margin: 0 auto; }
   .thread-bar { display: flex; justify-content: flex-end; margin-bottom: 8px; }
@@ -83,12 +74,6 @@
     vertical-align: 0.25em; cursor: pointer;
   }
   .cite:hover { background: var(--highlight); color: var(--ink); }
-  .caret {
-    display: inline-block; width: 0.5ch; height: 1.1em; vertical-align: -0.15em;
-    background: var(--ink); margin-left: 2px; animation: blink 1s steps(1) infinite;
-  }
-  @keyframes blink { 50% { opacity: 0; } }
-
   .toggles { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 20px; }
   .toggle {
     border: 1px solid var(--rule); background: var(--sheet); color: var(--ink);
@@ -140,9 +125,6 @@
     font-size: 0.82rem; color: var(--muted); margin-bottom: 8px;
   }
   .ref, .tick { font-weight: 700; color: var(--ink); }
-  .match { display: inline-flex; align-items: center; gap: 6px; }
-  .bar { width: 48px; height: 5px; border-radius: 3px; background: var(--rule); overflow: hidden; }
-  .bar i { display: block; height: 100%; background: var(--blue); }
   .quote { font: 1rem/1.65 var(--serif); margin: 0; overflow-wrap: anywhere; }
   .value { font: 600 1.15rem var(--sans); margin: 0; }
   .detail { font-size: 0.85rem; color: var(--muted); margin: 2px 0 0; overflow-wrap: anywhere; }
@@ -173,10 +155,6 @@
     flex: 1; border: 0; outline: 0; resize: none; background: transparent;
     color: var(--ink); font: inherit; font-size: 1.05rem;
     min-height: 28px; max-height: 200px; padding: 6px 0;
-  }
-  select {
-    border: 1px solid var(--rule); border-radius: 8px; background: var(--sheet);
-    color: var(--ink); font: inherit; font-size: 0.9rem; padding: 8px 10px;
   }
   .btn {
     border: 0; border-radius: 8px; background: var(--ink); color: var(--sheet);
@@ -216,9 +194,6 @@
   .preview.show { opacity: 1; transform: none; }
   .preview .quote { font-size: 0.92rem; }
 
-  .byline { padding: 8px 16px 20px; text-align: center; font-size: 0.75rem; line-height: 1.4; color: var(--muted); }
-  .byline .author { display: block; font-weight: 500; }
-  .byline .dedication { display: block; font: italic 0.8rem var(--serif); }
 
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { transition: none !important; animation: none !important; }
@@ -229,11 +204,7 @@
 <div class="wrap">
   <header>
     <h1>Ask the filings</h1>
-    <p class="lede" id="lede"></p>
-    <div class="modes" role="radiogroup" aria-label="Answer mode">
-      <button type="button" class="mode" role="radio" data-mode="agent">Agent</button>
-      <button type="button" class="mode" role="radio" data-mode="quick">Quick (/ask)</button>
-    </div>
+    <p class="lede">Ask about NVIDIA, Apple, or Capital One. The agent searches their 10-K and 10-Q filings and looks up reported figures, and every claim cites what it came from.</p>
   </header>
 
   <section class="thread" id="thread" aria-label="Conversation">
@@ -247,12 +218,6 @@
   <form class="ask" id="form">
     <div class="field">
       <textarea id="q" rows="1" aria-label="Your question"></textarea>
-      <select id="ticker" aria-label="Company" hidden>
-        <option value="">All companies</option>
-        <option value="NVDA">NVIDIA</option>
-        <option value="AAPL">Apple</option>
-        <option value="COF">Capital One</option>
-      </select>
       <button class="btn" id="go" type="submit">Ask</button>
     </div>
     <div id="examples-wrap">
@@ -262,39 +227,18 @@
   </form>
 </div>
 
-<footer class="byline">
-  <span class="author">By Dennis Dang</span>
-  <span class="dedication">for Mom and Dad</span>
-</footer>
-
 <div class="preview" id="preview" role="tooltip"></div>
 
 <script>
 const REFUSAL = "The provided filings do not address this.";
-const MODES = {
-  agent: {
-    lede: "Ask about NVIDIA, Apple, or Capital One. The agent searches their 10-K and 10-Q filings and looks up reported figures, and every claim cites what it came from. Answers take 10–30 seconds.",
-    placeholder: "Ask about results, risks, or a quarter…",
-    examples: [
-      "What was NVIDIA's revenue growth in fiscal 2025?",
-      "What did NVIDIA say about export controls in its latest quarterly report?",
-      "Compare Apple and NVIDIA gross margin in fiscal 2025.",
-      "What is NVIDIA's diluted EPS for fiscal 2025?",
-      "What are the main credit risks Capital One describes?",
-    ],
-  },
-  quick: {
-    lede: "Answers come only from NVIDIA, Apple, and Capital One annual reports (10-K, fiscal 2022–2026). Every claim links to the passage it came from.",
-    placeholder: "Ask about risks, strategy, or accounting…",
-    examples: [
-      "What limits NVIDIA from selling to China?",
-      "How does Apple earn from the App Store, and what threatens it?",
-      "What is Capital One's stress capital buffer requirement?",
-      "What risks does NVIDIA see in acquisitions and strategic investments?",
-      "How do high interest rates affect Capital One?",
-    ],
-  },
-};
+const PLACEHOLDER = "Ask about results, risks, or a quarter…";
+const EXAMPLES = [
+  "What was NVIDIA's revenue growth in fiscal 2025?",
+  "What did NVIDIA say about export controls in its latest quarterly report?",
+  "Compare Apple and NVIDIA gross margin in fiscal 2025.",
+  "What is NVIDIA's diluted EPS for fiscal 2025?",
+  "What are the main credit risks Capital One describes?",
+];
 // What the citation check calls its findings, in words for the timeline.
 const PROBLEMS = {
   uncited: "a figure had no citation",
@@ -308,7 +252,6 @@ const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
 const $ = (id) => document.getElementById(id);
 const form = $("form"), q = $("q"), go = $("go"), thread = $("thread"), preview = $("preview");
 
-let mode = "agent";
 let busy = false;
 let controller = null;
 let turns = [];
@@ -320,23 +263,15 @@ function el(tag, className, text) {
   return e;
 }
 
-// ---- mode, examples, composer -------------------------------------------------
+// ---- examples, composer -------------------------------------------------------
 
-function setMode(next) {
-  mode = next;
-  const m = MODES[mode];
-  $("lede").textContent = m.lede;
-  q.placeholder = m.placeholder;
-  $("ticker").hidden = mode !== "quick";   // the agent works out the company from the question
-  document.querySelectorAll(".mode").forEach((b) => b.setAttribute("aria-checked", String(b.dataset.mode === mode)));
-  $("examples").replaceChildren(...m.examples.map((ex) => {
-    const b = el("button", "example", ex);
-    b.type = "button";
-    b.onclick = () => { q.value = ex; autosize(); form.requestSubmit(); };
-    return b;
-  }));
-}
-document.querySelectorAll(".mode").forEach((b) => b.addEventListener("click", () => setMode(b.dataset.mode)));
+q.placeholder = PLACEHOLDER;
+$("examples").replaceChildren(...EXAMPLES.map((ex) => {
+  const b = el("button", "example", ex);
+  b.type = "button";
+  b.onclick = () => { q.value = ex; autosize(); form.requestSubmit(); };
+  return b;
+}));
 
 function autosize() {
   q.style.height = "auto";
@@ -374,7 +309,7 @@ form.addEventListener("submit", async (e) => {
 
   q.value = "";
   autosize();
-  const t = createTurn(question, mode);
+  const t = createTurn(question);
   turns.push(t);
   updateThreadChrome();
   t.el.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" });
@@ -382,8 +317,7 @@ form.addEventListener("submit", async (e) => {
   controller = new AbortController();
   setBusy(true);
   try {
-    if (t.kind === "agent") await runAgent(t, question, controller.signal);
-    else await runQuick(t, question, $("ticker").value || null, controller.signal);
+    await runAgent(t, question, controller.signal);
   } catch (err) {
     const stopped = err.name === "AbortError";
     t.progress.className = stopped ? "progress" : "progress error";
@@ -396,9 +330,9 @@ form.addEventListener("submit", async (e) => {
 
 // ---- one question and its answer ---------------------------------------------
 
-function createTurn(question, kind) {
+function createTurn(question) {
   const t = {
-    kind, text: "", items: [], cards: [], sweepTimer: null, pending: [], revisions: [],
+    text: "", items: [], cards: [], sweepTimer: null, pending: [], revisions: [],
     el: el("article", "turn"), progress: el("p", "progress"), answer: el("div", "answer"),
     note: el("p", "note"), steps: el("ol", "steps"), passages: el("div"), sources: el("div", "sources"),
     panelToggle: el("button", "toggle"), sourcesToggle: el("button", "toggle"), toggles: el("div", "toggles"),
@@ -411,7 +345,6 @@ function createTurn(question, kind) {
   t.flags.hidden = true;
   t.panelToggle.type = t.sourcesToggle.type = "button";
   t.panelToggle.hidden = t.sourcesToggle.hidden = true;
-  t.steps.hidden = kind !== "agent";
   t.panelToggle.addEventListener("click", () => setPanelOpen(t, t.panel.hidden));
   t.sourcesToggle.addEventListener("click", () => setSourcesOpen(t, t.sources.hidden));
   t.toggles.append(t.panelToggle, t.sourcesToggle);
@@ -507,7 +440,7 @@ function parseEvent(raw) {
   return { event, data: data ? JSON.parse(data) : null };
 }
 
-// ---- agent mode ------------------------------------------------------------------
+// ---- the agent ------------------------------------------------------------------
 
 async function runAgent(t, question, signal) {
   t.progress.textContent = "Thinking…";
@@ -648,7 +581,7 @@ function filingLabel(p) {
   return `${p.form || "Filing"} ${period}FY${p.fiscal_year}`;
 }
 
-// ---- evidence cards (agent) and source cards (quick) ------------------------------------
+// ---- evidence cards ------------------------------------
 
 function itemMeta(item, n) {
   const row = el("div", "meta");
@@ -660,30 +593,8 @@ function itemMeta(item, n) {
       el("span", null, item.source || ""));
   } else if (item.type === "calc") {
     row.append(el("span", "tick", "Calculation"));
-  } else {
-    row.append(quickMeta(item, n));
   }
   return row;
-}
-
-function quickMeta(s) {
-  const frag = document.createDocumentFragment();
-  frag.append(el("span", "tick", s.ticker), el("span", null, `Fiscal year ended ${s.period}`));
-  const match = el("span", "match");
-  match.title = `Cosine distance ${s.distance.toFixed(3)}`;
-  const bar = el("span", "bar");
-  const fill = el("i");
-  fill.style.width = (Math.min(1, Math.max(0.05, (0.6 - s.distance) / 0.4)) * 100).toFixed(0) + "%";
-  bar.append(fill);
-  match.append(bar, matchLabel(s.distance));
-  frag.append(match);
-  return frag;
-}
-
-function matchLabel(d) {
-  if (d < 0.35) return "Close match";
-  if (d < 0.45) return "Partial match";
-  return "Weak match";
 }
 
 function factTitle(f) {
@@ -699,7 +610,7 @@ function renderCards(t) {
     const card = el("article", "passage");
     card.append(itemMeta(item, n));
     if (item.type === "passage") {
-      card.append(...passageBody(item.text.trim(), null));
+      card.append(...passageBody(item.text.trim()));
     } else if (item.type === "fact") {
       card.append(el("p", "value", money(item.value, item.unit)),
         el("p", "detail", `${factTitle(item)} · period ended ${item.period_end}`),
@@ -864,25 +775,20 @@ function resultBody(data) {
   return nodes;
 }
 
-// A quote with an optional "Show full passage" button; `loadFull` fetches the full text when the quote is only an excerpt.
-function passageBody(fullText, excerpt, loadFull) {
-  const short = excerpt ?? (fullText.length > 500 ? fullText.slice(0, 500) + "…" : fullText);
+// A quote, with a "Show full passage" button when it is longer than the excerpt.
+function passageBody(fullText) {
+  const short = fullText.length > 500 ? fullText.slice(0, 500) + "…" : fullText;
   const quote = el("p", "quote");
   const hl = el("span", "hl", short);
   quote.append(hl);
   const nodes = [quote];
-  if (loadFull || short !== fullText) {
+  if (short !== fullText) {
     const more = el("button", "more", "Show full passage");
     more.type = "button";
-    let full = loadFull ? null : fullText;
     let expanded = false;
-    more.onclick = async () => {
-      if (full === null) {
-        more.textContent = "Loading…";
-        full = await loadFull();
-      }
+    more.onclick = () => {
       expanded = !expanded;
-      hl.textContent = expanded ? full : short;
+      hl.textContent = expanded ? fullText : short;
       more.textContent = expanded ? "Show less" : "Show full passage";
     };
     nodes.push(more);
@@ -929,7 +835,6 @@ function showPreview(t, btn) {
   if (item.type === "passage") body.textContent = item.text.trim().slice(0, 240) + "…";
   else if (item.type === "fact") body.textContent = `${factTitle(item)}: ${money(item.value, item.unit)}`;
   else if (item.type === "calc") body.textContent = `${item.expression} = ${item.result}`;
-  else body.textContent = item.excerpt.slice(0, 240).trim() + "…";
   preview.replaceChildren(itemMeta(item, n), body);
 
   const r = btn.getBoundingClientRect();
@@ -945,56 +850,6 @@ document.addEventListener("keydown", (e) => {
   if (e.key === "Escape") clearHighlight();
 });
 
-// ---- quick mode (/ask/stream) -----------------------------------------------------------
-
-async function runQuick(t, question, ticker, signal) {
-  t.progress.textContent = "Searching the filings…";
-  const sources = [];
-  const draw = (streaming) => {
-    const frag = renderInline(t.text, (id) => (/^\d+$/.test(id) && sources[Number(id) - 1] ? Number(id) : 0));
-    if (streaming) {
-      const caret = el("span", "caret");
-      caret.setAttribute("aria-hidden", "true");
-      frag.append(caret);
-    }
-    t.answer.replaceChildren(frag);
-  };
-  await stream("/ask/stream", { question, k: 5, ticker }, signal, ({ event, data }) => {
-    if (event === "sources") {
-      data.forEach((s) => sources.push({ type: "quick", ...s }));
-      t.items = sources;
-      renderQuickCards(t);
-      t.progress.textContent = `Reading ${data.length} passages…`;
-    } else if (event === "status" && data.stage === "writing") {
-      t.progress.textContent = "Writing the answer…";
-    } else if (event === "token") {
-      t.text += data.text;
-      draw(true);
-    } else if (event === "done") {
-      draw(false);
-      finishTurn(t);
-    } else if (event === "error") {
-      throw new Error(data.message);
-    }
-  });
-}
-
-function renderQuickCards(t) {
-  t.cards = [];
-  t.passages.replaceChildren();
-  t.items.forEach((s, i) => {
-    const card = el("article", "passage");
-    const loadFull = async () => {
-      const res = await fetch("/chunks/" + encodeURIComponent(s.id));
-      return res.ok ? (await res.json()).text.trim() : "This passage couldn't be loaded.";
-    };
-    card.append(itemMeta(s, i + 1), ...passageBody(null, s.excerpt.trim() + "…", loadFull));
-    t.cards.push(card);
-    t.passages.append(card);
-  });
-}
-
-setMode("agent");
 updateThreadChrome();
 </script>
 </body>
