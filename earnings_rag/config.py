@@ -34,6 +34,7 @@ class Settings(BaseSettings):
     data_dir: Path = REPO_ROOT / 'data'
 
     tickers: list[str] = ['NVDA', 'AAPL', 'COF']
+    company_names: dict[str, str] = {'NVDA': 'NVIDIA', 'AAPL': 'Apple', 'COF': 'Capital One'}  # shown on the home screen
     filings_per_ticker: int = 4
     form_type: str = '10-K'
 
