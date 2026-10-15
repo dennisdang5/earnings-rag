@@ -96,6 +96,7 @@ def test_ingest_refuses_a_ticker_with_a_missing_core_metric(monkeypatch, capsys)
     monkeypatch.setattr(xbrl, 'attach_income_statement', lambda facts, ticker, refresh=False: False)  # network
     stored = []
     monkeypatch.setattr('earnings_rag.store.upsert_facts', stored.append)
+    monkeypatch.setattr('earnings_rag.store.replace_ingest_decisions', lambda ticker, rows: None)
     with pytest.raises(SystemExit):
         xbrl.ingest_facts()
     assert stored == [] and 'MISSING CORE METRIC revenue' in capsys.readouterr().out
@@ -136,3 +137,15 @@ def test_resolver_reproduces_the_hand_verified_map(ticker):
         pytest.skip('SEC facts not cached (data/ is git-ignored)')
     res = resolve(json.loads(path.read_text(encoding='utf-8')), ticker)
     assert res.primary == HAND_VERIFIED[ticker] and not res.skipped and not res.missing_core
+
+
+def test_decisions_mirror_the_report_as_rows():
+    from earnings_rag.resolver import Resolution, decisions
+    res = Resolution(skipped={'revenue': 'two concepts disagree'}, pinned=[('loans', 'LoansAndLeasesReceivable')],
+                     stale={'gross_profit': 2022}, discontinued=['gross_profit'], latest_fy=2025,
+                     checks=[('gp = rev - cost', False)])
+    rows = decisions(res)
+    assert ('revenue', 'skipped', 'two concepts disagree') in rows
+    assert ('loans', 'override', 'pinned to LoansAndLeasesReceivable') in rows
+    assert any(m == 'gross_profit' and k == 'stale' and d.endswith('not stored') for m, k, d in rows)
+    assert (None, 'check_differs', 'gp = rev - cost') in rows

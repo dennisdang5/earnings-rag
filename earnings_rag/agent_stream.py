@@ -12,7 +12,11 @@ import threading
 from dataclasses import asdict
 from typing import Callable, Iterator
 
+import structlog
+
 from earnings_rag.agent.loop import run_agent
+
+log = structlog.get_logger()
 
 _DONE = object()
 
@@ -50,7 +54,36 @@ def to_stream_event(event: dict) -> tuple[str, dict] | None:
     return None
 
 
-def stream_events(question: str, client, run_fn: Callable = run_agent) -> Iterator[tuple[str, dict]]:
+def trace_pairs(trace: list[dict]) -> set[tuple[str, str]]:
+    """The (company, metric) pairs the run's get_financials calls asked about."""
+    pairs = set()
+    for step in trace:
+        if step.get('tool') != 'get_financials':
+            continue
+        try:
+            args = json.loads(step['arguments']) if isinstance(step['arguments'], str) else step['arguments']
+            pairs.add((args['company'], args['metric']))
+        except (ValueError, KeyError, TypeError):
+            continue
+    return pairs
+
+
+def ingest_decisions_for(trace: list[dict], lookup: Callable | None = None) -> list[dict]:
+    """What ingestion decided about the metrics this run read, for the panel. A database failure gives [] rather than
+    losing the answer."""
+    pairs = trace_pairs(trace)
+    if not pairs:
+        return []
+    try:
+        if lookup is None:
+            from earnings_rag.store import get_ingest_decisions as lookup
+        return lookup(pairs)
+    except Exception:
+        log.warning('ingest_decisions_failed', exc_info=True)
+        return []
+
+
+def stream_events(question: str, client, run_fn: Callable = run_agent, decisions_fn: Callable | None = None) -> Iterator[tuple[str, dict]]:
     """
     Yield (event, data) for one agent run: status / tool_call / tool_result / revising while it works, then `answer`
     (the text), `details` (the whole result: trace, usage, flags, resolved periods) and `done`. A failure inside the
@@ -88,7 +121,7 @@ def stream_events(question: str, client, run_fn: Callable = run_agent) -> Iterat
                     yield mapped
             elif kind == 'result':
                 yield 'answer', {'text': payload.answer}
-                yield 'details', asdict(payload)
+                yield 'details', {**asdict(payload), 'ingest_decisions': ingest_decisions_for(payload.trace, decisions_fn)}
                 yield 'done', {}
             else:
                 failure = payload

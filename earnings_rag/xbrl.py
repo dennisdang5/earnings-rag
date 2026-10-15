@@ -5,7 +5,7 @@ from datetime import date, timedelta
 from statistics import median
 
 from earnings_rag.config import settings
-from earnings_rag.resolver import METRICS, resolve, describe  # noqa: F401  (METRICS is imported from here elsewhere)
+from earnings_rag.resolver import METRICS, resolve, describe, decisions  # noqa: F401  (METRICS is imported from here elsewhere)
 
 MIN_FISCAL_YEAR = 2020
 
@@ -446,7 +446,7 @@ def attach_income_statement(facts: dict, ticker: str, refresh: bool = False) -> 
 
 
 def ingest_facts(refresh: bool = False) -> None:
-    from earnings_rag.store import init_schema, upsert_facts
+    from earnings_rag.store import init_schema, replace_ingest_decisions, upsert_facts
 
     init_schema()
     failed = []
@@ -457,7 +457,9 @@ def ingest_facts(refresh: bool = False) -> None:
         res = resolve(facts, ticker)
         for line in describe(ticker, res):
             print(line)
+        found = decisions(res)
         if res.no_data or res.missing_core:
+            replace_ingest_decisions(ticker, found + [(None, 'not_stored', 'a core metric could not be resolved')])
             print(f'{ticker}: a core metric could not be resolved, not stored')
             failed.append(ticker)
             continue
@@ -468,11 +470,15 @@ def ingest_facts(refresh: bool = False) -> None:
               f'{len(bad) - len(split_sized)} restatements')
         for b in split_sized[:5]:
             print(f'  mismatch {b["metric"]} {b["period"]}: {b["readings"]}')
+        found.append((None, 'split_check', f'{checked} periods, {len(split_sized)} split-sized mismatches, '
+                                           f'{len(bad) - len(split_sized)} restatements'))
         if checked and len(split_sized) / checked > MAX_MISMATCH_RATE:
+            replace_ingest_decisions(ticker, found + [(None, 'not_stored', 'split adjustment looks wrong')])
             print(f'{ticker}: split adjustment looks wrong, not stored')
             failed.append(ticker)
             continue
 
+        replace_ingest_decisions(ticker, found)
         rows = normalize(facts, ticker)
         upsert_facts(rows)
         print(f'{ticker}: {len(rows)} facts ({sum(r["derived"] for r in rows)} derived)')

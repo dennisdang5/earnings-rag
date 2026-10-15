@@ -59,6 +59,16 @@ DO $$ BEGIN
         ALTER TABLE facts ADD PRIMARY KEY (ticker, metric, axis, segment, fiscal_year, fiscal_period);
     END IF;
 END $$;
+
+-- What ingestion decided about a ticker's metrics (skipped, stale, pinned, failed checks, split check), so the UI
+-- panel can show it. Replaced whole per ticker on each ingest.
+CREATE TABLE IF NOT EXISTS ingest_decisions(
+    ticker  TEXT NOT NULL,
+    metric  TEXT,
+    kind    TEXT NOT NULL,
+    detail  TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
 """
 
 def connect() -> psycopg.Connection:
@@ -241,6 +251,25 @@ def replace_segment_facts(ticker: str, rows: list[dict]) -> None:
             cur.execute("DELETE FROM facts WHERE ticker = %s AND axis <> ''", (ticker,))
             cur.executemany(UPSERT_FACTS_SQL, [tuple(r[c] for c in FACT_COLUMNS) for r in rows])
         conn.commit()
+
+def replace_ingest_decisions(ticker: str, rows: list[tuple[str | None, str, str]]) -> None:
+    """Swap a ticker's recorded ingest decisions for these, in one transaction."""
+    with connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM ingest_decisions WHERE ticker = %s", (ticker,))
+            cur.executemany("INSERT INTO ingest_decisions (ticker, metric, kind, detail) VALUES (%s, %s, %s, %s)",
+                            [(ticker, m, k, d) for m, k, d in rows])
+        conn.commit()
+
+def get_ingest_decisions(pairs: set[tuple[str, str]]) -> list[dict]:
+    """Decisions for the (ticker, metric) pairs asked about, plus each ticker's metric-less ones (notes, identity checks)."""
+    tickers = sorted({t for t, _ in pairs})
+    if not tickers:
+        return []
+    with connect() as conn:
+        rows = conn.execute("SELECT ticker, metric, kind, detail FROM ingest_decisions WHERE ticker = ANY(%s) "
+                            "ORDER BY ticker, metric NULLS LAST, kind", (tickers,)).fetchall()
+    return [{'ticker': t, 'metric': m, 'kind': k, 'detail': d} for t, m, k, d in rows if m is None or (t, m) in pairs]
 
 def get_facts(ticker: str, metric: str, fiscal_year: int | None = None, fiscal_period: str | None = None,
               segment: str = '', axis: str = '', limit: int = 12) -> list[dict]:

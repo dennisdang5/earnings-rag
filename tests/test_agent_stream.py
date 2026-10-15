@@ -105,3 +105,32 @@ def test_endpoint_sends_sse_events(monkeypatch):
     events = [line[len('event: '):] for line in response.text.splitlines() if line.startswith('event: ')]
     assert events == ['status', 'tool_call', 'tool_result', 'status', 'answer', 'details', 'done']
     assert TestClient(api.app).post('/agent/stream', json={'question': ''}).status_code == 422
+
+
+def test_details_carry_the_ingest_decisions_for_the_metrics_the_run_read():
+    class FinArgs(BaseModel):
+        company: str
+        metric: str
+
+    fin = Tool('get_financials', 'Return facts.', FinArgs, lambda a: {'results': [{'id': 'NVDA_revenue_FY2025', 'value': 1.0}]})
+    seen = []
+
+    def lookup(pairs):
+        seen.append(pairs)
+        return [{'ticker': 'NVDA', 'metric': 'revenue', 'kind': 'stale', 'detail': 'x'}]
+
+    client = FakeClient(tool_request('get_financials', '{"company": "NVDA", "metric": "revenue"}'),
+                        answer('Revenue was $1 million [NVDA_revenue_FY2025].'))
+    out = dict(stream_events('q', client, run_fn=partial(run_agent, tools=[fin]), decisions_fn=lookup))
+    assert seen == [{('NVDA', 'revenue')}]
+    assert out['details']['ingest_decisions'][0]['kind'] == 'stale'
+
+
+def test_a_failing_decisions_lookup_does_not_lose_the_answer():
+    def broken(pairs):
+        raise RuntimeError('db down')
+
+    from earnings_rag.agent_stream import ingest_decisions_for
+    trace = [{'tool': 'get_financials', 'arguments': {'company': 'AAPL', 'metric': 'revenue'}}]
+    assert ingest_decisions_for(trace, broken) == []
+    assert ingest_decisions_for([{'tool': 'search_filings', 'arguments': {}}], broken) == []

@@ -307,6 +307,19 @@ def resolve(companyfacts: dict, ticker: str) -> Resolution:
     return res
 
 
+def decisions(res: Resolution) -> list[tuple[str | None, str, str]]:
+    """The same findings as `describe`, as (metric or None, kind, detail) rows for the ingest_decisions table."""
+    out: list[tuple[str | None, str, str]] = []
+    out += [(m, 'skipped', why) for m, why in res.skipped.items()]
+    out += [(m, 'override', f'pinned to {concept}') for m, concept in res.pinned]
+    out += [(m, 'stale', f'last reported for FY{y}, the latest year is FY{res.latest_fy}'
+             + ('; not stored' if m in res.discontinued else '')) for m, y in res.stale.items()]
+    out += [(None, 'note', n) for n in res.notes]
+    out += [(None, 'check_ok' if ok else 'check_differs', label) for label, ok in res.checks]
+    out += [(m, 'missing_core', 'core metric could not be resolved') for m in res.missing_core]
+    return out
+
+
 def describe(ticker: str, res: Resolution) -> list[str]:
     """The coverage report printed at ingest: what was found, what was not, what was pinned, what needs a look."""
     if res.no_data:
