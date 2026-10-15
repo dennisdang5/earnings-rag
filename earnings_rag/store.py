@@ -262,14 +262,19 @@ def replace_ingest_decisions(ticker: str, rows: list[tuple[str | None, str, str]
         conn.commit()
 
 def get_ingest_decisions(pairs: set[tuple[str, str]]) -> list[dict]:
-    """Decisions for the (ticker, metric) pairs asked about, plus each ticker's metric-less ones (notes, identity checks)."""
+    """Decisions for the (ticker, metric) pairs asked about, rows tagged to those metrics only (a check tagged to several is listed once)."""
     tickers = sorted({t for t, _ in pairs})
     if not tickers:
         return []
     with connect() as conn:
         rows = conn.execute("SELECT ticker, metric, kind, detail FROM ingest_decisions WHERE ticker = ANY(%s) "
                             "ORDER BY ticker, metric NULLS LAST, kind", (tickers,)).fetchall()
-    return [{'ticker': t, 'metric': m, 'kind': k, 'detail': d} for t, m, k, d in rows if m is None or (t, m) in pairs]
+    out, seen = [], set()
+    for t, m, k, d in rows:
+        if (t, m) in pairs and (t, k, d) not in seen:   # a check covering several metrics is listed once
+            seen.add((t, k, d))
+            out.append({'ticker': t, 'metric': m, 'kind': k, 'detail': d})
+    return out
 
 def get_facts(ticker: str, metric: str, fiscal_year: int | None = None, fiscal_period: str | None = None,
               segment: str = '', axis: str = '', limit: int = 12) -> list[dict]:
