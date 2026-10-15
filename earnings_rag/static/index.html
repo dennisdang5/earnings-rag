@@ -75,6 +75,27 @@
     vertical-align: 0.25em; cursor: pointer;
   }
   .cite:hover { background: var(--highlight); color: var(--ink); }
+  .chart { margin: 18px 0 0; padding: 14px 16px; background: var(--sheet); border: 1px solid var(--rule); border-radius: 12px; }
+  .chart h3 { margin: 0 0 10px; font: 600 0.82rem var(--sans); color: var(--muted); }
+  .bar-row {
+    display: grid; grid-template-columns: 112px minmax(0, 1fr) 68px; gap: 10px; align-items: center;
+    width: 100%; padding: 4px 0; border: 0; background: none; color: var(--ink); font: 0.85rem var(--sans);
+    text-align: left; cursor: pointer;
+  }
+  .bar-row:hover .fill { filter: brightness(1.12); }
+  .bar-row:hover .bar-label { color: var(--blue); }
+  .bar-label { color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .track { height: 14px; background: var(--paper); border-radius: 4px; overflow: hidden; }
+  .fill { display: block; height: 100%; width: 0; background: var(--blue); border-radius: 4px; transition: width 0.7s cubic-bezier(.2, .7, .2, 1); }
+  .fill.neg { background: var(--error); }
+  .bar-value { font-weight: 600; white-space: nowrap; text-align: right; }
+  @media (max-width: 600px) { .bar-row { grid-template-columns: 84px minmax(0, 1fr) 64px; } }
+
+  .followups { margin-top: 18px; }
+  .followups .label { margin: 0 0 8px; font-size: 0.82rem; color: var(--muted); }
+  .followups .asks { display: flex; flex-wrap: wrap; gap: 8px; }
+  .followups .example { border-radius: 999px; padding: 7px 14px; }
+
   .toggles { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 20px; }
   .toggle {
     border: 1px solid var(--rule); background: var(--sheet); color: var(--ink);
@@ -320,7 +341,11 @@ function compactDollars(millions) {
   return millions >= 1000 ? `$${(millions / 1000).toFixed(1)}B` : `$${Math.round(millions)}M`;
 }
 
-function renderHome(cards) { $("cards").replaceChildren(...cards.map(companyCard)); }
+let homeCards = [];
+function renderHome(cards) {
+  homeCards = cards;
+  $("cards").replaceChildren(...cards.map(companyCard));
+}
 
 // Cards with questions show at once; the numbers fill in when /companies answers (and stay out if it fails).
 renderHome(Object.entries(COMPANIES).map(([ticker, c]) => ({ ticker, name: c.name })));
@@ -362,6 +387,7 @@ form.addEventListener("submit", async (e) => {
 
   q.value = "";
   autosize();
+  turns.forEach((old) => { old.followups.hidden = true; });
   const t = createTurn(question);
   turns.push(t);
   updateThreadChrome();
@@ -389,19 +415,21 @@ function createTurn(question) {
     el: el("article", "turn"), progress: el("p", "progress"), answer: el("div", "answer"),
     note: el("p", "note"), steps: el("ol", "steps"), passages: el("div"), sources: el("div", "sources"),
     panelToggle: el("button", "toggle"), sourcesToggle: el("button", "toggle"), toggles: el("div", "toggles"),
-    panel: el("div", "panel"), flags: el("p", "flagline"),
+    panel: el("div", "panel"), flags: el("p", "flagline"), chart: el("div"), followups: el("div", "followups"),
   };
   t.note.hidden = true;
   t.sources.hidden = true;
   t.sources.append(t.passages);
   t.panel.hidden = true;
   t.flags.hidden = true;
+  t.chart.hidden = true;
+  t.followups.hidden = true;
   t.panelToggle.type = t.sourcesToggle.type = "button";
   t.panelToggle.hidden = t.sourcesToggle.hidden = true;
   t.panelToggle.addEventListener("click", () => setPanelOpen(t, t.panel.hidden));
   t.sourcesToggle.addEventListener("click", () => setSourcesOpen(t, t.sources.hidden));
   t.toggles.append(t.panelToggle, t.sourcesToggle);
-  t.el.append(el("p", "turn-q", question), t.steps, t.progress, t.answer, t.flags, t.note, t.toggles, t.panel, t.sources);
+  t.el.append(el("p", "turn-q", question), t.steps, t.progress, t.answer, t.chart, t.flags, t.note, t.toggles, t.panel, t.sources, t.followups);
   thread.append(t.el);
 
   t.answer.addEventListener("click", (e) => {
@@ -529,10 +557,12 @@ async function runAgent(t, question, signal) {
   }));
   t.items = cited;
   renderCards(t);
+  renderChart(t);
   t.steps.hidden = true;   // the live timeline is replaced by the panel's steps
   renderPanel(t, details);
   renderFlagLine(t, details);
   finishTurn(t);
+  renderFollowups(t, details);
 }
 
 function problemText(key) { return PROBLEMS[key] || key; }
@@ -675,6 +705,136 @@ function renderCards(t) {
     t.cards.push(card);
     t.passages.append(card);
   });
+}
+
+// ---- chart of the cited figures ---------------------------------------------------------
+
+function humanMetric(key) {
+  return String(key).replaceAll("_", " ").replace(/\beps\b/i, "EPS");
+}
+
+function periodLabel(f) {
+  return f.period && f.period !== "FY" ? `${f.period} FY${f.fiscal_year}` : `FY${f.fiscal_year}`;
+}
+
+// A value for a bar: dollars compact, anything else (per-share figures) as written.
+function barValue(f) {
+  if (f.unit !== "USD millions") return money(f.value, f.unit);
+  const v = Math.abs(f.value) >= 1000 ? `$${(Math.abs(f.value) / 1000).toFixed(1)}B` : `$${Math.round(Math.abs(f.value))}M`;
+  return (f.value < 0 ? "-" : "") + v;
+}
+
+// The cited facts that belong on one chart: the same metric and unit, all annual or all quarterly, at least two.
+// The group with the most points wins; the chart only ever shows what the answer cites.
+function chartFacts(items) {
+  const groups = new Map();
+  for (const item of items) {
+    if (item.type !== "fact" || typeof item.value !== "number") continue;
+    const key = `${item.metric}|${item.unit}|${item.period === "FY" ? "FY" : "Q"}`;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(item);
+  }
+  let best = [];
+  for (const g of groups.values()) if (g.length > best.length) best = g;
+  if (best.length < 2) return [];
+  const order = [];
+  for (const f of best) if (!order.includes(f.company)) order.push(f.company);
+  return best.slice().sort((a, b) => order.indexOf(a.company) - order.indexOf(b.company) || String(a.period_end).localeCompare(String(b.period_end))).slice(0, 8);
+}
+
+function renderChart(t) {
+  const facts = chartFacts(t.items);
+  if (!facts.length) return;
+  const multi = new Set(facts.map((f) => f.company)).size > 1;
+  const first = facts[0];
+  const max = Math.max(...facts.map((f) => Math.abs(f.value))) || 1;
+  const box = el("figure");
+  box.className = "chart";
+  const metricName = humanMetric(first.metric);
+  box.append(el("h3", null, multi ? metricName[0].toUpperCase() + metricName.slice(1) : `${nameOf(first.company)} ${metricName}`));
+  const bars = [];
+  for (const f of facts) {
+    const n = t.items.indexOf(f) + 1;
+    const row = el("button", "bar-row");
+    row.type = "button";
+    row.setAttribute("aria-label", `${factTitle(f)}: ${barValue(f)}. Show source ${n}`);
+    const fill = el("span", "fill" + (f.value < 0 ? " neg" : ""));
+    const track = el("span", "track");
+    track.append(fill);
+    row.append(el("span", "bar-label", multi ? `${f.company} ${periodLabel(f)}` : periodLabel(f)), track, el("span", "bar-value", barValue(f)));
+    row.addEventListener("click", () => highlight(t, n));
+    bars.push([fill, Math.abs(f.value) / max]);
+    box.append(row);
+  }
+  t.chart.replaceChildren(box);
+  t.chart.hidden = false;
+  // grow from zero once the box is on screen (no motion when the reader asked for none)
+  requestAnimationFrame(() => requestAnimationFrame(() => bars.forEach(([fill, share]) => {
+    fill.style.width = Math.max(2, share * 100).toFixed(1) + "%";
+  })));
+}
+
+// ---- follow-up questions ----------------------------------------------------------------
+// The agent has no memory, so every suggestion names its company, metric and year: it must stand alone.
+
+function mostCommon(values) {
+  const counts = new Map();
+  for (const v of values) counts.set(v, (counts.get(v) || 0) + 1);
+  let best = null;
+  for (const [v, n] of counts) if (best === null || n > counts.get(best)) best = v;
+  return best;
+}
+
+function nameOf(ticker) {
+  return (COMPANIES[ticker] || {}).name || ticker;
+}
+
+function followupQuestions(t, d) {
+  if (t.text.includes(REFUSAL) || /not (yet )?available/i.test(t.text.slice(0, 300))) return [];
+  const facts = t.items.filter((i) => i.type === "fact");
+  const out = [];
+  if (facts.length) {
+    const metric = mostCommon(facts.map((f) => f.metric));
+    const group = facts.filter((f) => f.metric === metric);
+    const companies = [...new Set(group.map((f) => f.company))];
+    const yearOf = (c) => Math.max(...group.filter((f) => f.company === c).map((f) => f.fiscal_year));
+    const what = humanMetric(metric);
+    const company = mostCommon(group.map((f) => f.company));
+    const year = yearOf(company), name = nameOf(company);
+    if (companies.length > 1) {
+      // the answer already compares companies: ask what is behind each figure
+      for (const c of companies.slice(0, 2)) out.push(`What drove the change in ${nameOf(c)}'s ${what} in fiscal ${yearOf(c)}?`);
+    } else {
+      const other = Object.keys(COMPANIES).find((k) => k !== company);
+      out.push(`What drove the change in ${name}'s ${what} in fiscal ${year}?`);
+      if (other) out.push(`How does ${name}'s ${what} compare with ${nameOf(other)}'s in fiscal ${year}?`);
+    }
+    if (d.trace.some((step) => typeof step.result === "string" && step.result.includes(`${metric} by `))) {
+      out.push(`How is ${name}'s ${what} split by product, segment or region in fiscal ${year}?`);
+    }
+  } else {
+    const company = mostCommon(t.items.filter((i) => i.type === "passage").map((i) => i.ticker));
+    if (!company) return [];
+    const card = homeCards.find((c) => c.ticker === company);
+    const year = card && card.latest_annual && card.latest_annual.label.replace(/^FY/, "");
+    if (year) out.push(`What was ${nameOf(company)}'s revenue growth in fiscal ${year}?`);
+    out.push(`What does ${nameOf(company)} say about risks in its latest quarterly report?`);
+  }
+  return [...new Set(out)].slice(0, 3);
+}
+
+function renderFollowups(t, d) {
+  const questions = followupQuestions(t, d);
+  if (!questions.length) return;
+  const asks = el("div", "asks");
+  for (const question of questions) {
+    const b = el("button", "example", question);
+    b.type = "button";
+    b.onclick = () => ask(question);
+    asks.append(b);
+  }
+  t.followups.replaceChildren(el("p", "label", "Ask next"), asks);
+  t.followups.hidden = false;
 }
 
 // ---- how this was computed (agent) ---------------------------------------------------------
