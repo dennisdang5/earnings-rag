@@ -11,7 +11,7 @@
   :root {
     --paper: #F4F6F8; --sheet: #FFFFFF; --ink: #15212C; --muted: #566573;
     --rule: #D5DCE3; --blue: #1D4F91; --blue-soft: #E3ECF7;
-    --highlight: #F2E35B; --error: #B03A2E;
+    --highlight: #F2E35B; --error: #B03A2E; --ok: #2E7D4F; --warn: #A56A00;
     --sans: "Public Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
     --serif: "Source Serif 4", Georgia, "Times New Roman", serif;
   }
@@ -19,7 +19,7 @@
     :root {
       --paper: #121820; --sheet: #1A222C; --ink: #E6ECF1; --muted: #95A3B1;
       --rule: #2B3642; --blue: #8DB6EE; --blue-soft: #1F2F45;
-      --highlight: rgba(242, 227, 91, 0.38); --error: #F08A7E;
+      --highlight: rgba(242, 227, 91, 0.38); --error: #F08A7E; --ok: #6CC48C; --warn: #E0B050;
     }
   }
   * { box-sizing: border-box; }
@@ -27,15 +27,105 @@
     margin: 0; background: var(--paper); color: var(--ink);
     font: 16px/1.55 var(--sans); -webkit-font-smoothing: antialiased;
   }
-  .wrap { max-width: 1120px; margin: 0 auto; padding: 56px 24px 96px; }
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 56px 24px 24px; }
 
-  header { max-width: 640px; margin: 0 auto 28px; text-align: center; }
+  header { max-width: 640px; margin: 0 auto 24px; text-align: center; }
   h1 {
     font-size: clamp(2rem, 4vw, 2.75rem); line-height: 1.1; font-weight: 700;
     letter-spacing: -0.02em; margin: 0 0 12px;
   }
   .lede { color: var(--muted); margin: 0; font-size: 1.02rem; }
 
+  .modes {
+    display: inline-flex; margin: 18px auto 0; padding: 3px; gap: 2px;
+    border: 1px solid var(--rule); border-radius: 999px; background: var(--sheet);
+  }
+  .mode {
+    border: 0; background: transparent; color: var(--muted); border-radius: 999px;
+    padding: 6px 16px; font: 500 0.88rem var(--sans); cursor: pointer;
+  }
+  .mode[aria-checked="true"] { background: var(--ink); color: var(--sheet); }
+
+  .thread { max-width: 760px; margin: 0 auto; }
+  .thread-bar { display: flex; justify-content: flex-end; margin-bottom: 8px; }
+  .link {
+    border: 0; background: none; color: var(--blue); font: 500 0.85rem var(--sans);
+    padding: 0; cursor: pointer;
+  }
+
+  .turn { margin: 0 0 40px; }
+  .turn-q {
+    width: fit-content; max-width: 90%; margin: 0 0 16px auto; padding: 10px 14px;
+    background: var(--blue-soft); border-radius: 14px 14px 4px 14px;
+    font-weight: 500; overflow-wrap: anywhere;
+  }
+
+  .steps { list-style: none; margin: 0 0 14px; padding: 0; font-size: 0.88rem; color: var(--muted); }
+  .steps li { display: flex; gap: 10px; align-items: baseline; padding: 3px 0; }
+  .dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--rule); transform: translateY(-1px); }
+  .steps li.pending .dot { background: var(--blue); animation: pulse 1s ease-in-out infinite; }
+  .steps li.done .dot { background: var(--ok); }
+  .steps li.warn .dot { background: var(--warn); }
+  .steps .res { margin-left: auto; padding-left: 12px; white-space: nowrap; }
+  .steps li.warn .res { color: var(--warn); }
+  @keyframes pulse { 50% { opacity: 0.25; } }
+
+  .progress { min-height: 20px; margin: 0 0 8px; color: var(--muted); font-size: 0.9rem; }
+  .progress.error { color: var(--error); }
+
+  .answer { font-size: 1.08rem; line-height: 1.7; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .answer.refused { color: var(--muted); }
+  .note { margin-top: 14px; font-size: 0.92rem; color: var(--muted); }
+
+  .cite {
+    font: 600 0.72em var(--sans); color: var(--blue); background: var(--blue-soft);
+    border: 0; border-radius: 4px; padding: 1px 5px; margin: 0 1px;
+    vertical-align: 0.25em; cursor: pointer;
+  }
+  .cite:hover { background: var(--highlight); color: var(--ink); }
+  .caret {
+    display: inline-block; width: 0.5ch; height: 1.1em; vertical-align: -0.15em;
+    background: var(--ink); margin-left: 2px; animation: blink 1s steps(1) infinite;
+  }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  .toggles { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 20px; }
+  .toggle {
+    border: 1px solid var(--rule); background: var(--sheet); color: var(--ink);
+    border-radius: 999px; padding: 7px 16px; font: 500 0.88rem var(--sans); cursor: pointer;
+  }
+  .toggle:hover { border-color: var(--blue); color: var(--blue); }
+  .sources { margin-top: 24px; }
+
+  .passage { border-left: 3px solid var(--rule); padding: 2px 0 2px 16px; margin-bottom: 26px; }
+  .passage.lit { border-left-color: var(--highlight); cursor: pointer; }
+  .meta {
+    display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center;
+    font-size: 0.82rem; color: var(--muted); margin-bottom: 8px;
+  }
+  .ref, .tick { font-weight: 700; color: var(--ink); }
+  .match { display: inline-flex; align-items: center; gap: 6px; }
+  .bar { width: 48px; height: 5px; border-radius: 3px; background: var(--rule); overflow: hidden; }
+  .bar i { display: block; height: 100%; background: var(--blue); }
+  .quote { font: 1rem/1.65 var(--serif); margin: 0; overflow-wrap: anywhere; }
+  .value { font: 600 1.15rem var(--sans); margin: 0; }
+  .detail { font-size: 0.85rem; color: var(--muted); margin: 2px 0 0; overflow-wrap: anywhere; }
+  .hl {
+    background-image: linear-gradient(transparent 58%, var(--highlight) 58%);
+    background-repeat: no-repeat; background-size: 0% 100%;
+    -webkit-box-decoration-break: clone; box-decoration-break: clone;
+    transition: background-size 0.9s ease-out;
+  }
+  .passage.swept .hl { background-size: 100% 100%; }
+  .more {
+    margin-top: 8px; border: 0; background: none; color: var(--blue);
+    font: 500 0.85rem var(--sans); padding: 0; cursor: pointer;
+  }
+
+  .composer {
+    position: sticky; bottom: 0; z-index: 5; padding: 28px 24px 14px;
+    background: linear-gradient(to bottom, transparent, var(--paper) 22px);
+  }
   .ask { max-width: 760px; margin: 0 auto; }
   .field {
     display: flex; gap: 10px; align-items: flex-end;
@@ -56,17 +146,15 @@
     border: 0; border-radius: 8px; background: var(--ink); color: var(--sheet);
     font: 600 0.95rem var(--sans); padding: 10px 18px; cursor: pointer;
   }
-  .btn:disabled { opacity: 0.5; cursor: wait; }
+  .btn.stop { background: var(--error); color: #fff; }
   :focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
   @media (max-width: 600px) {
     .field { flex-wrap: wrap; }
     textarea { flex-basis: 100%; }
+    .composer { padding: 24px 12px 10px; }
   }
 
-  .examples-label {
-    margin: 18px 0 8px; text-align: center;
-    font-size: 0.85rem; color: var(--muted);
-  }
+  .examples-label { margin: 18px 0 8px; text-align: center; font-size: 0.85rem; color: var(--muted); }
   .examples {
     display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px;
     margin-top: 0; font-size: 0.88rem;
@@ -82,61 +170,6 @@
     .examples { grid-template-columns: 1fr; }
   }
 
-  .progress {
-    min-height: 24px; margin: 28px 0 8px; color: var(--muted);
-    font-size: 0.9rem; text-align: center;
-  }
-  .progress.error { color: var(--error); }
-
-  .result { max-width: 760px; margin: 0 auto; }
-
-  .answer { font-size: 1.08rem; line-height: 1.7; white-space: pre-wrap; }
-  .answer.refused { color: var(--muted); }
-  .note { margin-top: 14px; font-size: 0.92rem; color: var(--muted); }
-
-  .cite {
-    font: 600 0.72em var(--sans); color: var(--blue); background: var(--blue-soft);
-    border: 0; border-radius: 4px; padding: 1px 5px; margin: 0 1px;
-    vertical-align: 0.25em; cursor: pointer;
-  }
-  .cite:hover { background: var(--highlight); color: var(--ink); }
-  .caret {
-    display: inline-block; width: 0.5ch; height: 1.1em; vertical-align: -0.15em;
-    background: var(--ink); margin-left: 2px; animation: blink 1s steps(1) infinite;
-  }
-  @keyframes blink { 50% { opacity: 0; } }
-
-  .sources-toggle {
-    display: block; margin: 24px auto 0;
-    border: 1px solid var(--rule); background: var(--sheet); color: var(--ink);
-    border-radius: 999px; padding: 8px 18px; font: 500 0.9rem var(--sans); cursor: pointer;
-  }
-  .sources-toggle:hover { border-color: var(--blue); color: var(--blue); }
-  .sources { margin-top: 24px; }
-
-  .passage { border-left: 3px solid var(--rule); padding: 2px 0 2px 16px; margin-bottom: 26px; }
-  .passage.lit { border-left-color: var(--highlight); cursor: pointer; }
-  .meta {
-    display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center;
-    font-size: 0.82rem; color: var(--muted); margin-bottom: 8px;
-  }
-  .ref, .tick { font-weight: 700; color: var(--ink); }
-  .match { display: inline-flex; align-items: center; gap: 6px; }
-  .bar { width: 48px; height: 5px; border-radius: 3px; background: var(--rule); overflow: hidden; }
-  .bar i { display: block; height: 100%; background: var(--blue); }
-  .quote { font: 1rem/1.65 var(--serif); margin: 0; }
-  .hl {
-    background-image: linear-gradient(transparent 58%, var(--highlight) 58%);
-    background-repeat: no-repeat; background-size: 0% 100%;
-    -webkit-box-decoration-break: clone; box-decoration-break: clone;
-    transition: background-size 0.9s ease-out;
-  }
-  .passage.swept .hl { background-size: 100% 100%; }
-  .more {
-    margin-top: 8px; border: 0; background: none; color: var(--blue);
-    font: 500 0.85rem var(--sans); padding: 0; cursor: pointer;
-  }
-
   .preview {
     position: absolute; z-index: 10; max-width: 340px;
     background: var(--sheet); border: 1px solid var(--rule); border-radius: 10px;
@@ -147,15 +180,9 @@
   .preview.show { opacity: 1; transform: none; }
   .preview .quote { font-size: 0.92rem; }
 
-  .byline {
-    position: fixed; right: 16px; bottom: 12px;
-    text-align: right; font-size: 0.75rem; line-height: 1.4; color: var(--muted);
-  }
+  .byline { padding: 8px 16px 20px; text-align: center; font-size: 0.75rem; line-height: 1.4; color: var(--muted); }
   .byline .author { display: block; font-weight: 500; }
   .byline .dedication { display: block; font: italic 0.8rem var(--serif); }
-  @media (max-width: 600px) {
-    .byline { position: static; text-align: center; padding: 0 16px 20px; }
-  }
 
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { transition: none !important; animation: none !important; }
@@ -166,13 +193,25 @@
 <div class="wrap">
   <header>
     <h1>Ask the filings</h1>
-    <p class="lede">Answers come only from NVIDIA, Apple, and Capital One annual reports (10-K, fiscal 2022–2026). Every claim links to the passage it came from.</p>
+    <p class="lede" id="lede"></p>
+    <div class="modes" role="radiogroup" aria-label="Answer mode">
+      <button type="button" class="mode" role="radio" data-mode="agent">Agent</button>
+      <button type="button" class="mode" role="radio" data-mode="quick">Quick (/ask)</button>
+    </div>
   </header>
 
+  <section class="thread" id="thread" aria-label="Conversation">
+    <div class="thread-bar" id="thread-bar" hidden>
+      <button type="button" class="link" id="clear">New chat</button>
+    </div>
+  </section>
+</div>
+
+<div class="composer">
   <form class="ask" id="form">
     <div class="field">
-      <textarea id="q" rows="1" placeholder="Ask about risks, strategy, or accounting…" aria-label="Your question" required></textarea>
-      <select id="ticker" aria-label="Company">
+      <textarea id="q" rows="1" aria-label="Your question"></textarea>
+      <select id="ticker" aria-label="Company" hidden>
         <option value="">All companies</option>
         <option value="NVDA">NVIDIA</option>
         <option value="AAPL">Apple</option>
@@ -180,21 +219,11 @@
       </select>
       <button class="btn" id="go" type="submit">Ask</button>
     </div>
-    <p class="examples-label">Or try one of these</p>
-    <div class="examples" id="examples"></div>
-  </form>
-
-  <p class="progress" id="progress" aria-live="polite"></p>
-
-  <section class="result" id="result" hidden>
-    <div class="answer" id="answer"></div>
-    <p class="note" id="note" hidden></p>
-    <button type="button" class="sources-toggle" id="sources-toggle"
-            aria-expanded="false" aria-controls="sources">Show sources</button>
-    <div class="sources" id="sources" hidden>
-      <div id="passages"></div>
+    <div id="examples-wrap">
+      <p class="examples-label">Or try one of these</p>
+      <div class="examples" id="examples"></div>
     </div>
-  </section>
+  </form>
 </div>
 
 <footer class="byline">
@@ -206,33 +235,72 @@
 
 <script>
 const REFUSAL = "The provided filings do not address this.";
-const EXAMPLES = [
-  "What limits NVIDIA from selling to China?",
-  "How does Apple earn from the App Store, and what threatens it?",
-  "What is Capital One's stress capital buffer requirement?",
-  "What risks does NVIDIA see in acquisitions and strategic investments?",
-  "How do high interest rates affect Capital One?",
-];
+const MODES = {
+  agent: {
+    lede: "Ask about NVIDIA, Apple, or Capital One. The agent searches their 10-K and 10-Q filings and looks up reported figures, and every claim cites what it came from. Answers take 10–30 seconds.",
+    placeholder: "Ask about results, risks, or a quarter…",
+    examples: [
+      "What was NVIDIA's revenue growth in fiscal 2025?",
+      "What did NVIDIA say about export controls in its latest quarterly report?",
+      "Compare Apple and NVIDIA gross margin in fiscal 2025.",
+      "What is NVIDIA's diluted EPS for fiscal 2025?",
+      "What are the main credit risks Capital One describes?",
+    ],
+  },
+  quick: {
+    lede: "Answers come only from NVIDIA, Apple, and Capital One annual reports (10-K, fiscal 2022–2026). Every claim links to the passage it came from.",
+    placeholder: "Ask about risks, strategy, or accounting…",
+    examples: [
+      "What limits NVIDIA from selling to China?",
+      "How does Apple earn from the App Store, and what threatens it?",
+      "What is Capital One's stress capital buffer requirement?",
+      "What risks does NVIDIA see in acquisitions and strategic investments?",
+      "How do high interest rates affect Capital One?",
+    ],
+  },
+};
+// What the citation check calls its findings, in words for the timeline.
+const PROBLEMS = {
+  uncited: "a figure had no citation",
+  unknown_ids: "a cited id was not found",
+  unsupported: "a cited figure did not match its source",
+  unacknowledged_missing: "a missing filing was not mentioned",
+  slice_mismatch: "a company total was cited as a product figure",
+};
 const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 const $ = (id) => document.getElementById(id);
-const form = $("form"), q = $("q"), go = $("go"), progress = $("progress");
-const result = $("result"), answerEl = $("answer"), note = $("note");
-const passagesEl = $("passages"), preview = $("preview");
-const sourcesToggle = $("sources-toggle"), sourcesPanel = $("sources");
+const form = $("form"), q = $("q"), go = $("go"), thread = $("thread"), preview = $("preview");
 
-let sources = [];
-let text = "";
-let sweepTimer = null;
+let mode = "agent";
+let busy = false;
+let controller = null;
+let turns = [];
 
-for (const ex of EXAMPLES) {
-  const b = document.createElement("button");
-  b.type = "button";
-  b.className = "example";
-  b.textContent = ex;
-  b.onclick = () => { q.value = ex; autosize(); form.requestSubmit(); };
-  $("examples").append(b);
+function el(tag, className, text) {
+  const e = document.createElement(tag);
+  if (className) e.className = className;
+  if (text !== undefined) e.textContent = text;
+  return e;
 }
+
+// ---- mode, examples, composer -------------------------------------------------
+
+function setMode(next) {
+  mode = next;
+  const m = MODES[mode];
+  $("lede").textContent = m.lede;
+  q.placeholder = m.placeholder;
+  $("ticker").hidden = mode !== "quick";   // the agent works out the company from the question
+  document.querySelectorAll(".mode").forEach((b) => b.setAttribute("aria-checked", String(b.dataset.mode === mode)));
+  $("examples").replaceChildren(...m.examples.map((ex) => {
+    const b = el("button", "example", ex);
+    b.type = "button";
+    b.onclick = () => { q.value = ex; autosize(); form.requestSubmit(); };
+    return b;
+  }));
+}
+document.querySelectorAll(".mode").forEach((b) => b.addEventListener("click", () => setMode(b.dataset.mode)));
 
 function autosize() {
   q.style.height = "auto";
@@ -240,51 +308,133 @@ function autosize() {
 }
 q.addEventListener("input", autosize);
 q.addEventListener("keydown", (e) => {
-  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); form.requestSubmit(); }
+  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); if (!busy) form.requestSubmit(); }
 });
 
-function setSourcesOpen(open) {
-  sourcesPanel.hidden = !open;
-  sourcesToggle.setAttribute("aria-expanded", String(open));
-  sourcesToggle.textContent = open
-    ? "Hide sources"
-    : `Show ${sources.length} source${sources.length === 1 ? "" : "s"}`;
+function setBusy(on) {
+  busy = on;
+  go.textContent = on ? "Stop" : "Ask";
+  go.classList.toggle("stop", on);
 }
-sourcesToggle.addEventListener("click", () => setSourcesOpen(sourcesPanel.hidden));
+
+function updateThreadChrome() {
+  $("thread-bar").hidden = turns.length === 0;
+  $("examples-wrap").hidden = turns.length > 0;
+}
+
+$("clear").addEventListener("click", () => {
+  if (controller) controller.abort();
+  turns.forEach((t) => t.el.remove());
+  turns = [];
+  hidePreview();
+  updateThreadChrome();
+});
 
 form.addEventListener("submit", async (e) => {
   e.preventDefault();
+  if (busy) { controller.abort(); return; }
   const question = q.value.trim();
   if (!question) return;
 
-  sources = [];
-  text = "";
-  clearHighlight();
-  answerEl.replaceChildren();
-  answerEl.classList.remove("refused");
-  passagesEl.replaceChildren();
-  setSourcesOpen(false);
-  note.hidden = true;
-  result.hidden = true;
-  go.disabled = true;
-  progress.className = "progress";
-  progress.textContent = "Searching the filings…";
+  q.value = "";
+  autosize();
+  const t = createTurn(question, mode);
+  turns.push(t);
+  updateThreadChrome();
+  t.el.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" });
 
+  controller = new AbortController();
+  setBusy(true);
   try {
-    await stream(question, $("ticker").value || null);
+    if (t.kind === "agent") await runAgent(t, question, controller.signal);
+    else await runQuick(t, question, $("ticker").value || null, controller.signal);
   } catch (err) {
-    progress.className = "progress error";
-    progress.textContent = err.message;
+    const stopped = err.name === "AbortError";
+    t.progress.className = stopped ? "progress" : "progress error";
+    t.progress.textContent = stopped ? "Stopped." : err.message;
   } finally {
-    go.disabled = false;
+    setBusy(false);
+    controller = null;
   }
 });
 
-async function stream(question, ticker) {
-  const res = await fetch("/ask/stream", {
+// ---- one question and its answer ---------------------------------------------
+
+function createTurn(question, kind) {
+  const t = {
+    kind, text: "", items: [], cards: [], sweepTimer: null, pending: [], stepCount: 0,
+    el: el("article", "turn"), progress: el("p", "progress"), answer: el("div", "answer"),
+    note: el("p", "note"), steps: el("ol", "steps"), passages: el("div"), sources: el("div", "sources"),
+    stepsToggle: el("button", "toggle"), sourcesToggle: el("button", "toggle"), toggles: el("div", "toggles"),
+  };
+  t.note.hidden = true;
+  t.sources.hidden = true;
+  t.sources.append(t.passages);
+  t.stepsToggle.type = t.sourcesToggle.type = "button";
+  t.stepsToggle.hidden = t.sourcesToggle.hidden = true;
+  t.steps.hidden = kind !== "agent";
+  t.stepsToggle.addEventListener("click", () => setStepsOpen(t, t.steps.hidden));
+  t.sourcesToggle.addEventListener("click", () => setSourcesOpen(t, t.sources.hidden));
+  t.toggles.append(t.stepsToggle, t.sourcesToggle);
+  t.el.append(el("p", "turn-q", question), t.steps, t.progress, t.answer, t.note, t.toggles, t.sources);
+  thread.append(t.el);
+
+  t.answer.addEventListener("click", (e) => {
+    const b = e.target.closest(".cite");
+    if (b) highlight(t, Number(b.dataset.n));
+  });
+  t.answer.addEventListener("mouseover", (e) => {
+    const b = e.target.closest(".cite");
+    if (b) showPreview(t, b);
+  });
+  t.answer.addEventListener("mouseout", (e) => { if (e.target.closest(".cite")) hidePreview(); });
+  t.answer.addEventListener("focusin", (e) => {
+    const b = e.target.closest(".cite");
+    if (b) showPreview(t, b);
+  });
+  t.answer.addEventListener("focusout", hidePreview);
+  t.passages.addEventListener("click", (e) => {
+    if (e.target.closest(".more")) return; // expanding shouldn't clear it
+    if (e.target.closest(".passage.lit")) clearHighlight(t);
+  });
+  return t;
+}
+
+function setSourcesOpen(t, open) {
+  t.sources.hidden = !open;
+  t.sourcesToggle.setAttribute("aria-expanded", String(open));
+  t.sourcesToggle.textContent = open
+    ? "Hide sources"
+    : `Show ${t.items.length} source${t.items.length === 1 ? "" : "s"}`;
+}
+
+function setStepsOpen(t, open) {
+  t.steps.hidden = !open;
+  t.stepsToggle.setAttribute("aria-expanded", String(open));
+  t.stepsToggle.textContent = open ? "Hide steps" : `Show steps (${t.stepCount})`;
+}
+
+function finishTurn(t) {
+  t.progress.textContent = "";
+  if (t.text.includes(REFUSAL)) {
+    t.answer.classList.add("refused");
+    t.note.textContent = "Nothing in these filings covers that question. Try asking about NVIDIA, Apple, or Capital One.";
+    t.note.hidden = false;
+  }
+  if (t.items.length) {
+    t.sourcesToggle.hidden = false;
+    setSourcesOpen(t, false);
+  }
+}
+
+// ---- server-sent events --------------------------------------------------------
+
+async function stream(url, body, signal, onEvent) {
+  const res = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ question, k: 5, ticker }),
+    body: JSON.stringify(body),
+    signal,
   });
   if (!res.ok || !res.body) {
     throw new Error(`Couldn't get an answer (error ${res.status}). Try again in a moment.`);
@@ -303,7 +453,7 @@ async function stream(question, ticker) {
     while ((end = buffer.indexOf("\n\n")) !== -1) {
       const raw = buffer.slice(0, end);
       buffer = buffer.slice(end + 2);
-      handle(parseEvent(raw));
+      onEvent(parseEvent(raw));
     }
   }
 }
@@ -318,61 +468,179 @@ function parseEvent(raw) {
   return { event, data: data ? JSON.parse(data) : null };
 }
 
-function handle({ event, data }) {
-  if (event === "sources") {
-    sources = data;
-    renderPassages();
-    setSourcesOpen(false);
-    result.hidden = false;
-    progress.textContent = `Reading ${data.length} passages…`;
-  } else if (event === "status" && data.stage === "writing") {
-    progress.textContent = "Writing the answer…";
-  } else if (event === "token") {
-    text += data.text;
-    renderAnswer(true);
-  } else if (event === "done") {
-    renderAnswer(false);
-    finish();
-  } else if (event === "error") {
-    throw new Error(data.message);
-  }
-}
+// ---- agent mode ------------------------------------------------------------------
 
-function finish() {
-  progress.textContent = "";
-  if (text.includes(REFUSAL)) {
-    answerEl.classList.add("refused");
-    note.textContent = "Nothing in these filings covers that question. Try asking about NVIDIA, Apple, or Capital One.";
-    note.hidden = false;
-  }
-}
-
-// Build answer nodes from text; [n] markers become citation buttons. Never innerHTML.
-function renderAnswer(streaming) {
-  const frag = document.createDocumentFragment();
-  for (const part of text.split(/(\[\d+\])/)) {
-    const m = part.match(/^\[(\d+)\]$/);
-    const n = m ? Number(m[1]) : 0;
-    const s = sources[n - 1];
-    if (m && s) {
-      const b = document.createElement("button");
-      b.type = "button";
-      b.className = "cite";
-      b.dataset.n = n;
-      b.textContent = n;
-      b.setAttribute("aria-label", `Source ${n}, ${s.ticker} fiscal year ended ${s.period}`);
-      frag.append(b);
-    } else {
-      frag.append(document.createTextNode(part));
+async function runAgent(t, question, signal) {
+  t.progress.textContent = "Thinking…";
+  let details = null;
+  await stream("/agent/stream", { question }, signal, ({ event, data }) => {
+    if (event === "status") {
+      t.progress.textContent = data.stage === "writing" ? "Writing the answer…" : "Thinking…";
+    } else if (event === "tool_call") {
+      addStep(t, describeCall(data.tool, data.arguments));
+    } else if (event === "tool_result") {
+      resolveStep(t, describeResult(data));
+    } else if (event === "revising") {
+      const why = data.problems.map(problemText).join("; ");
+      addStep(t, "Checking the draft: sent back (" + why + ")", "warn");
+    } else if (event === "answer") {
+      t.text = data.text;
+    } else if (event === "details") {
+      details = data;
+    } else if (event === "error") {
+      throw new Error(data.message);
     }
+  });
+  if (!details) throw new Error("The agent stopped before finishing. Try again in a moment.");
+
+  const evidence = evidenceFrom(details.trace);
+  const cited = [];
+  t.answer.replaceChildren(renderInline(t.text, (id) => {
+    const item = evidence.get(id);
+    if (!item) return 0;
+    let n = cited.indexOf(item) + 1;
+    if (!n) n = cited.push(item);
+    return n;
+  }));
+  t.items = cited;
+  renderCards(t);
+  t.stepCount = t.steps.children.length;
+  if (t.stepCount) {
+    t.stepsToggle.hidden = false;
+    setStepsOpen(t, false);
   }
-  if (streaming) {
-    const caret = document.createElement("span");
-    caret.className = "caret";
-    caret.setAttribute("aria-hidden", "true");
-    frag.append(caret);
+  finishTurn(t);
+}
+
+function problemText(key) { return PROBLEMS[key] || key; }
+
+function parseArgs(json) {
+  try { return JSON.parse(json) || {}; } catch { return {}; }
+}
+
+function describeCall(tool, argsJson) {
+  const a = parseArgs(argsJson);
+  if (tool === "search_filings") {
+    const where = [a.company, a.fiscal_year ? "FY" + a.fiscal_year : null, a.period, a.latest ? "latest filing" : null]
+      .filter(Boolean).join(" ");
+    return `Searching filings: "${a.query || ""}"` + (where ? " · " + where : "");
   }
-  answerEl.replaceChildren(frag);
+  if (tool === "get_financials") {
+    const when = [a.fiscal_year ? "FY" + a.fiscal_year : null, a.period].filter(Boolean).join(" ");
+    return `Looking up ${a.company || ""} ${String(a.metric || "").replaceAll("_", " ")}`
+      + (when ? " · " + when : "") + (a.breakdown ? ` · by ${a.breakdown}` : "");
+  }
+  if (tool === "calculate") return `Calculating ${a.expression || ""}`;
+  return `Running ${tool}`;
+}
+
+function describeResult(r) {
+  if (r.error) return { text: "not available", cls: "warn" };
+  if (r.ids.length === 1 && r.ids[0].startsWith("calc_")) return { text: "done", cls: "done" };
+  return { text: `${r.count} result${r.count === 1 ? "" : "s"}`, cls: "done" };
+}
+
+function addStep(t, label, cls) {
+  const li = el("li", cls || "pending");
+  li.append(el("span", "dot"), el("span", "what", label), el("span", "res"));
+  if (!cls) t.pending.push(li);
+  t.steps.append(li);
+}
+
+function resolveStep(t, { text, cls }) {
+  const li = t.pending.shift();
+  if (!li) return;
+  li.className = cls;
+  li.querySelector(".res").textContent = text;
+}
+
+// Evidence by id, from the whole trace: passages, fact rows and calculations the model was given.
+function evidenceFrom(trace) {
+  const evidence = new Map();
+  for (const step of trace) {
+    let data;
+    try { data = JSON.parse(step.result); } catch { continue; }
+    if (!data || typeof data !== "object") continue;
+    for (const r of Array.isArray(data.results) ? data.results : []) {
+      if (!r || typeof r.id !== "string") continue;
+      if (typeof r.text === "string") evidence.set(r.id, { type: "passage", ...r });
+      else if ("value" in r) evidence.set(r.id, { type: "fact", ...r });
+    }
+    if (typeof data.id === "string" && "expression" in data) evidence.set(data.id, { type: "calc", ...data });
+  }
+  return evidence;
+}
+
+// **bold** and [id] citations become nodes; everything else is text. Never innerHTML.
+// `numberFor(id)` returns the chip number for a cited id, or 0 when the id is not evidence (left as plain text).
+function renderInline(text, numberFor) {
+  const frag = document.createDocumentFragment();
+  const token = /\*\*(.+?)\*\*|\[([^\]\s]+)\]/g;
+  let last = 0, m;
+  while ((m = token.exec(text)) !== null) {
+    if (m.index > last) frag.append(document.createTextNode(text.slice(last, m.index)));
+    if (m[1] !== undefined) {
+      const strong = el("strong");
+      strong.append(renderInline(m[1], numberFor));
+      frag.append(strong);
+    } else {
+      const n = numberFor(m[2]);
+      if (n) {
+        const b = el("button", "cite", String(n));
+        b.type = "button";
+        b.dataset.n = n;
+        b.setAttribute("aria-label", `Source ${n}`);
+        frag.append(b);
+      } else {
+        frag.append(document.createTextNode(m[0]));
+      }
+    }
+    last = token.lastIndex;
+  }
+  if (last < text.length) frag.append(document.createTextNode(text.slice(last)));
+  return frag;
+}
+
+function money(value, unit) {
+  if (unit === "USD millions") return `$${Number(value).toLocaleString("en-US")} million`;
+  return `${Number(value).toLocaleString("en-US")}${unit ? " " + unit : ""}`;
+}
+
+function filingLabel(p) {
+  const period = p.fiscal_period && p.fiscal_period !== "FY" ? `${p.fiscal_period} ` : "";
+  return `${p.form || "Filing"} ${period}FY${p.fiscal_year}`;
+}
+
+// ---- evidence cards (agent) and source cards (quick) ------------------------------------
+
+function itemMeta(item, n) {
+  const row = el("div", "meta");
+  row.append(el("span", "ref", `[${n}]`));
+  if (item.type === "passage") {
+    row.append(el("span", "tick", item.ticker), el("span", null, filingLabel(item)), el("span", null, `period ended ${item.period}`));
+  } else if (item.type === "fact") {
+    row.append(el("span", "tick", item.company), el("span", null, item.derived ? "derived from the filings" : "reported"),
+      el("span", null, item.source || ""));
+  } else if (item.type === "calc") {
+    row.append(el("span", "tick", "Calculation"));
+  } else {
+    row.append(quickMeta(item, n));
+  }
+  return row;
+}
+
+function quickMeta(s) {
+  const frag = document.createDocumentFragment();
+  frag.append(el("span", "tick", s.ticker), el("span", null, `Fiscal year ended ${s.period}`));
+  const match = el("span", "match");
+  match.title = `Cosine distance ${s.distance.toFixed(3)}`;
+  const bar = el("span", "bar");
+  const fill = el("i");
+  fill.style.width = (Math.min(1, Math.max(0.05, (0.6 - s.distance) / 0.4)) * 100).toFixed(0) + "%";
+  bar.append(fill);
+  match.append(bar, matchLabel(s.distance));
+  frag.append(match);
+  return frag;
 }
 
 function matchLabel(d) {
@@ -381,108 +649,99 @@ function matchLabel(d) {
   return "Weak match";
 }
 
-function metaRow(s, n) {
-  const row = document.createElement("div");
-  row.className = "meta";
-
-  const ref = document.createElement("span");
-  ref.className = "ref";
-  ref.textContent = `[${n}]`;
-
-  const tick = document.createElement("span");
-  tick.className = "tick";
-  tick.textContent = s.ticker;
-
-  const period = document.createElement("span");
-  period.textContent = `Fiscal year ended ${s.period}`;
-
-  const match = document.createElement("span");
-  match.className = "match";
-  match.title = `Cosine distance ${s.distance.toFixed(3)}`;
-  const bar = document.createElement("span");
-  bar.className = "bar";
-  const fill = document.createElement("i");
-  const strength = Math.min(1, Math.max(0.05, (0.6 - s.distance) / 0.4));
-  fill.style.width = (strength * 100).toFixed(0) + "%";
-  bar.append(fill);
-  match.append(bar, matchLabel(s.distance));
-
-  row.append(ref, tick, period, match);
-  return row;
+function factTitle(f) {
+  const when = f.period && f.period !== "FY" ? `${f.period} FY${f.fiscal_year}` : `FY${f.fiscal_year}`;
+  return `${f.company} ${String(f.metric).replaceAll("_", " ")}, ${when}`;
 }
 
-function renderPassages() {
-  sources.forEach((s, i) => {
+function renderCards(t) {
+  t.cards = [];
+  t.passages.replaceChildren();
+  t.items.forEach((item, i) => {
     const n = i + 1;
-    const article = document.createElement("article");
-    article.className = "passage";
-    article.id = "p-" + n;
+    const card = el("article", "passage");
+    card.append(itemMeta(item, n));
+    if (item.type === "passage") {
+      card.append(...passageBody(item.text.trim(), null));
+    } else if (item.type === "fact") {
+      card.append(el("p", "value", money(item.value, item.unit)),
+        el("p", "detail", `${factTitle(item)} · period ended ${item.period_end}`), el("p", "detail", item.id));
+    } else if (item.type === "calc") {
+      card.append(el("p", "value", `= ${Number(item.result).toLocaleString("en-US", { maximumFractionDigits: 6 })}`),
+        el("p", "detail", item.expression), el("p", "detail", item.id));
+    }
+    t.cards.push(card);
+    t.passages.append(card);
+  });
+}
 
-    const quote = document.createElement("p");
-    quote.className = "quote";
-    const hl = document.createElement("span");
-    hl.className = "hl";
-    hl.textContent = s.excerpt.trim() + "…";
-    quote.append(hl);
-
-    const more = document.createElement("button");
+// A quote with an optional "Show full passage" button; `loadFull` fetches the full text when the quote is only an excerpt.
+function passageBody(fullText, excerpt, loadFull) {
+  const short = excerpt ?? (fullText.length > 500 ? fullText.slice(0, 500) + "…" : fullText);
+  const quote = el("p", "quote");
+  const hl = el("span", "hl", short);
+  quote.append(hl);
+  const nodes = [quote];
+  if (loadFull || short !== fullText) {
+    const more = el("button", "more", "Show full passage");
     more.type = "button";
-    more.className = "more";
-    more.textContent = "Show full passage";
-    let full = null;
+    let full = loadFull ? null : fullText;
     let expanded = false;
     more.onclick = async () => {
       if (full === null) {
         more.textContent = "Loading…";
-        const res = await fetch("/chunks/" + encodeURIComponent(s.id));
-        full = res.ok ? (await res.json()).text.trim() : "This passage couldn't be loaded.";
+        full = await loadFull();
       }
       expanded = !expanded;
-      hl.textContent = expanded ? full : s.excerpt.trim() + "…";
+      hl.textContent = expanded ? full : short;
       more.textContent = expanded ? "Show less" : "Show full passage";
     };
-
-    article.append(metaRow(s, n), quote, more);
-    passagesEl.append(article);
-  });
+    nodes.push(more);
+  }
+  return nodes;
 }
 
-function clearHighlight() {
-  clearTimeout(sweepTimer);
-  document.querySelectorAll(".passage.lit, .passage.swept")
-    .forEach((p) => p.classList.remove("lit", "swept"));
+function clearHighlight(t) {
+  if (t) {
+    clearTimeout(t.sweepTimer);
+    t.passages.querySelectorAll(".passage.lit, .passage.swept").forEach((p) => p.classList.remove("lit", "swept"));
+  } else {
+    turns.forEach(clearHighlight);
+  }
 }
 
-function highlight(n) {
-  const el = $("p-" + n);
-  if (!el) return;
+function highlight(t, n) {
+  const card = t.cards[n - 1];
+  if (!card) return;
 
   // Clicking the citation that's already active turns it off
-  if (el.classList.contains("lit")) {
-    clearHighlight();
+  if (card.classList.contains("lit")) {
+    clearHighlight(t);
     return;
   }
 
   clearHighlight();
-  if (sourcesPanel.hidden) setSourcesOpen(true);
-  el.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "center" });
+  if (t.sources.hidden) setSourcesOpen(t, true);
+  card.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "center" });
 
-  void el.offsetWidth; // let the sweep restart cleanly
-  el.classList.add("lit", "swept");
+  void card.offsetWidth; // let the sweep restart cleanly
+  card.classList.add("lit", "swept");
 
   // Fade the text highlight so the passage is readable; the border stays
-  sweepTimer = setTimeout(() => el.classList.remove("swept"), 2200);
+  t.sweepTimer = setTimeout(() => card.classList.remove("swept"), 2200);
 }
 
-function showPreview(btn) {
+function showPreview(t, btn) {
   const n = Number(btn.dataset.n);
-  const s = sources[n - 1];
-  if (!s) return;
+  const item = t.items[n - 1];
+  if (!item) return;
 
-  const quote = document.createElement("p");
-  quote.className = "quote";
-  quote.textContent = s.excerpt.slice(0, 240).trim() + "…";
-  preview.replaceChildren(metaRow(s, n), quote);
+  const body = el("p", "quote");
+  if (item.type === "passage") body.textContent = item.text.trim().slice(0, 240) + "…";
+  else if (item.type === "fact") body.textContent = `${factTitle(item)}: ${money(item.value, item.unit)}`;
+  else if (item.type === "calc") body.textContent = `${item.expression} = ${item.result}`;
+  else body.textContent = item.excerpt.slice(0, 240).trim() + "…";
+  preview.replaceChildren(itemMeta(item, n), body);
 
   const r = btn.getBoundingClientRect();
   const maxLeft = window.scrollX + document.documentElement.clientWidth - 356;
@@ -493,31 +752,61 @@ function showPreview(btn) {
 
 function hidePreview() { preview.classList.remove("show"); }
 
-answerEl.addEventListener("click", (e) => {
-  const b = e.target.closest(".cite");
-  if (b) highlight(Number(b.dataset.n));
-});
-answerEl.addEventListener("mouseover", (e) => {
-  const b = e.target.closest(".cite");
-  if (b) showPreview(b);
-});
-answerEl.addEventListener("mouseout", (e) => {
-  if (e.target.closest(".cite")) hidePreview();
-});
-answerEl.addEventListener("focusin", (e) => {
-  const b = e.target.closest(".cite");
-  if (b) showPreview(b);
-});
-answerEl.addEventListener("focusout", hidePreview);
-
-passagesEl.addEventListener("click", (e) => {
-  if (e.target.closest(".more")) return; // expanding shouldn't clear it
-  if (e.target.closest(".passage.lit")) clearHighlight();
-});
-
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape") clearHighlight();
 });
+
+// ---- quick mode (/ask/stream) -----------------------------------------------------------
+
+async function runQuick(t, question, ticker, signal) {
+  t.progress.textContent = "Searching the filings…";
+  const sources = [];
+  const draw = (streaming) => {
+    const frag = renderInline(t.text, (id) => (/^\d+$/.test(id) && sources[Number(id) - 1] ? Number(id) : 0));
+    if (streaming) {
+      const caret = el("span", "caret");
+      caret.setAttribute("aria-hidden", "true");
+      frag.append(caret);
+    }
+    t.answer.replaceChildren(frag);
+  };
+  await stream("/ask/stream", { question, k: 5, ticker }, signal, ({ event, data }) => {
+    if (event === "sources") {
+      data.forEach((s) => sources.push({ type: "quick", ...s }));
+      t.items = sources;
+      renderQuickCards(t);
+      t.progress.textContent = `Reading ${data.length} passages…`;
+    } else if (event === "status" && data.stage === "writing") {
+      t.progress.textContent = "Writing the answer…";
+    } else if (event === "token") {
+      t.text += data.text;
+      draw(true);
+    } else if (event === "done") {
+      draw(false);
+      finishTurn(t);
+    } else if (event === "error") {
+      throw new Error(data.message);
+    }
+  });
+}
+
+function renderQuickCards(t) {
+  t.cards = [];
+  t.passages.replaceChildren();
+  t.items.forEach((s, i) => {
+    const card = el("article", "passage");
+    const loadFull = async () => {
+      const res = await fetch("/chunks/" + encodeURIComponent(s.id));
+      return res.ok ? (await res.json()).text.trim() : "This passage couldn't be loaded.";
+    };
+    card.append(itemMeta(s, i + 1), ...passageBody(null, s.excerpt.trim() + "…", loadFull));
+    t.cards.push(card);
+    t.passages.append(card);
+  });
+}
+
+setMode("agent");
+updateThreadChrome();
 </script>
 </body>
 </html>
