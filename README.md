@@ -186,23 +186,6 @@ python eval/judge_runs.py eval/runs/<run>.jsonl      # LLM-judge scores
 
 ---
 
-## Limitations and next steps
-
-Known gaps, each paired with the direction for closing it. Measurements for most of them are in `DECISIONS.md`.
-
-| Area | Limitation | Direction |
-|---|---|---|
-| Answer verification | The checker confirms that a cited id states a figure, not that it is the right fact for the claim. Passage figures in mixed text-and-number answers are sometimes cited with a fact or calc id that doesn't state them. The draft is sent back, but the problem can survive the one revision, which costs about 18–25k input tokens. | Use the LLM judge as a per-claim check on the live path, and cite passage figures with the passage id |
-| Retrieval relevance | Competition-risk questions pull in IP and brand passages. In Capital One filings "credit" is ambiguous (ratings, quality, losses), and adjacent chunks in a fair-value note are nearly identical. Three annual retrieval questions miss. | Add a reranker or a distance threshold, and try hybrid keyword + vector search |
-| Conversation | Follow-ups carry the earlier topic but not earlier answers, so "compare that to what you said earlier" fails. | Send earlier turns as messages, and allow citing ids from earlier turns |
-| Period understanding | Relative periods ("last quarter", "next fiscal year") are resolved from a phrase list, and unusual wordings fall back to the model's own reading. | Resolve periods with a model call, with the code validating the result |
-| Metric coverage | Company-specific XBRL concepts aren't read (Bank of America's provision since 2022). Cost-of-revenue detection can drop a valid line. Banks' loans and deposits need a per-bank pin. Foreign filers (20-F) aren't handled. | Read values from the filing HTML for company-specific concepts, and add synonyms checked by accounting identities |
-| Scale | Three tickers and 4,400 chunks, searched by exact scan. Company cards need hand-written example questions. Multi-class issuers need manual split overrides. | Add a vector index, generate cards and examples from the data, and extend split detection |
-| Evaluation | The agent eval uses 3 repeats per question, and the retrieval sets are small (22 and 8 questions). The judge has only 2 true `unsupported` labels and no held-out set, and its relevance labels are synthetic for the negative cases. | Grow the question sets, label a held-out set including real errors, and judge the multi-turn runs |
-| Observability | Segment-ingest warnings aren't persisted. The endpoint has no rate limit or auth, and no resume after a dropped connection. | Persist all ingest warnings, and add auth, rate limiting and `Last-Event-ID` resume |
-
----
-
 ## Running locally
 
 **Prerequisites:** Python 3.11+, Docker, an OpenAI API key, and an SEC user agent string.

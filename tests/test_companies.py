@@ -20,13 +20,16 @@ def test_cards_pick_each_companys_newest_filings_in_configured_order():
     assert nvda['name'] == 'NVIDIA'
     assert nvda['latest_annual'] == {'label': 'FY2026', 'period': '2026-01-25'}
     assert nvda['latest_quarterly'] == {'label': 'Q2 FY2027', 'period': '2026-07-26'}
+    assert nvda['coverage'] == {'from': '2025-01-26', 'to': '2026-07-26'}
     assert nvda['revenue'] == {'fiscal_year': 2026, 'usd_millions': 215938}
 
 
 def test_a_company_without_quarterlies_or_revenue_or_a_name_still_gets_a_card():
     apple = build_cards(['AAPL'], {}, FILINGS, lambda t: None)[0]
     assert apple['name'] == 'AAPL' and apple['latest_quarterly'] is None and apple['revenue'] is None
-    assert build_cards(['TSLA'], {}, FILINGS, lambda t: None)[0]['latest_annual'] is None
+    assert apple['coverage'] == {'from': '2025-09-27', 'to': '2025-09-27'}
+    tesla = build_cards(['TSLA'], {}, FILINGS, lambda t: None)[0]
+    assert tesla['latest_annual'] is None and tesla['coverage'] is None
 
 
 def test_companies_endpoint_returns_the_cards(monkeypatch):
