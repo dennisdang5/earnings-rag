@@ -15,6 +15,12 @@ def _filing(filings: list[dict], ticker: str, form: str) -> dict | None:
     return {'label': f"{quarter}FY{newest['fiscal_year']}", 'period': str(newest['period'])}
 
 
+def _coverage(filings: list[dict], ticker: str) -> dict | None:
+    """The span of dates the ticker's filings with text cover: {from, to} are the earliest and newest period ends."""
+    periods = [str(f['period']) for f in filings if f['ticker'] == ticker]
+    return {'from': min(periods), 'to': max(periods)} if periods else None
+
+
 def build_cards(tickers: list[str], names: dict[str, str], filings: list[dict],
                 latest_revenue: Callable[[str], dict | None]) -> list[dict]:
     """One card per ticker, in the configured order. `latest_revenue(ticker)` returns {'fiscal_year', 'usd_millions'} or None."""
@@ -23,5 +29,6 @@ def build_cards(tickers: list[str], names: dict[str, str], filings: list[dict],
         'name': names.get(t, t),
         'latest_annual': _filing(filings, t, '10-K'),
         'latest_quarterly': _filing(filings, t, '10-Q'),
+        'coverage': _coverage(filings, t),
         'revenue': latest_revenue(t),
     } for t in tickers]

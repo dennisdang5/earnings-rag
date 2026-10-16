@@ -552,3 +552,10 @@ refused — so the difference had to be in the prompt text itself.
 - User's decision: the line under the user's question is removed; the rewritten question stays in "How this was computed" ("Question interpreted": "Your follow-up was read as: ..."). Reason given: the thread stays clean; the panel is where the how and why of an answer live. Cost, accepted: a wrong rewrite is no longer visible without opening the panel (the 10-15 follow-up design had argued for always showing it), so the answer itself must show what was answered (it states the company, metric and year).
 - Change (`index.html` only): the `.interp` element, its CSS and the `interpreted` event handler are gone; the panel row is built from `details.interpreted` as before. The `interpreted` SSE event is still sent (the API and tests are unchanged).
 - Verified with Playwright against the live model: turn 2 "And Apple?" has no line under the question and the panel shows the row; turn 3 ("last year", unchanged) has no row; no page errors.
+
+# 10-16-2026 - The page states the time range of the filings
+- Problem: nothing on the page said how far back the corpus goes, so a user could ask about a year the filings do not cover (a 2014 question gets a "not available" answer after several tool calls).
+- Change: each `/companies` card carries `coverage` ({from, to}: earliest and newest period end among the company's filings with text, any form). The page shows the span across all companies under the lede ("Filings on file: Dec 2021 to Jul 2026. Earlier filings are not included."), a per-company line on each card, and the same range in the composer placeholder. No model or prompt change: the agent already reports a missing filing.
+- Wording: the text starts at Dec 2021 (Apple's Q1 FY2022 10-Q), but the structured facts reach back to fiscal 2020, so the note says earlier *filings* are not included instead of claiming nothing earlier can be answered.
+- Verified in Chrome (Playwright), desktop and 390 px: note, three card lines and placeholder show, no sideways scroll, no page errors. Test: coverage on a card, and none for a company without filings (348 tests).
+

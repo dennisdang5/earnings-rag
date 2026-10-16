@@ -37,6 +37,8 @@
     letter-spacing: -0.02em; margin: 0 0 12px;
   }
   .lede { color: var(--muted); margin: 0; font-size: 1.02rem; }
+  .coverage { margin: 10px 0 0; font-size: 0.9rem; color: var(--text); }
+  .coverage strong { font-weight: 600; }
 
   .thread { max-width: 760px; margin: 0 auto; }
   .thread-bar { display: flex; justify-content: flex-end; margin-bottom: 8px; }
@@ -238,6 +240,7 @@
   <header>
     <h1>Ask the filings</h1>
     <p class="lede">Ask about NVIDIA, Apple, or Capital One. The agent searches their 10-K and 10-Q filings and looks up reported figures, and every claim cites what it came from.</p>
+    <p class="coverage" id="coverage" hidden></p>
   </header>
 
   <section class="home" id="home" aria-label="Companies covered">
@@ -325,6 +328,9 @@ function companyCard(c) {
     card.append(el("p", "big", compactDollars(c.revenue.usd_millions)),
       el("p", "stat", `FY${c.revenue.fiscal_year} revenue`));
   }
+  if (c.coverage) {
+    card.append(el("p", "stat", `Filings on file: ${monthYear(c.coverage.from)} to ${monthYear(c.coverage.to)}`));
+  }
   for (const [title, f] of [["Latest annual report", c.latest_annual], ["Latest quarterly report", c.latest_quarterly]]) {
     if (!f) continue;
     const line = el("p", "stat", `${title}: ${f.label}, ended `);
@@ -347,10 +353,30 @@ function compactDollars(millions) {
   return millions >= 1000 ? `$${(millions / 1000).toFixed(1)}B` : `$${Math.round(millions)}M`;
 }
 
+// "2025-09-27" -> "Sep 2025". The date is split by hand so the browser's time zone cannot move it to another month.
+function monthYear(iso) {
+  const [y, m] = iso.split("-").map(Number);
+  return `${["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][m - 1]} ${y}`;
+}
+
+// The span every company has filings for, so nobody asks about a year before the corpus starts.
+function showCoverage(cards) {
+  const spans = cards.map((c) => c.coverage).filter(Boolean);
+  const note = $("coverage");
+  if (!spans.length) { note.hidden = true; return; }
+  const from = spans.map((s) => s.from).sort()[0];
+  const to = spans.map((s) => s.to).sort().pop();
+  note.replaceChildren("Filings on file: ", el("strong", null, `${monthYear(from)} to ${monthYear(to)}`),
+    ". Earlier filings are not included.");
+  note.hidden = false;
+  q.placeholder = `Ask about filings from ${monthYear(from)} to ${monthYear(to)}…`;
+}
+
 let homeCards = [];
 function renderHome(cards) {
   homeCards = cards;
   $("cards").replaceChildren(...cards.map(companyCard));
+  showCoverage(cards);
 }
 
 // Cards with questions show at once; the numbers fill in when /companies answers (and stay out if it fails).
