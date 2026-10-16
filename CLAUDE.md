@@ -134,7 +134,7 @@ Moved here from the README so the README stays an architecture overview. Measure
 - **Metric coverage:** company-specific XBRL concepts are not read (BAC provision since 2022); cost-of-revenue detection can drop a valid line (UNH rule would also drop Meta); bank loans/deposits need an `OVERRIDES` pin; 20-F filers unsupported. Direction: read values from the filing HTML; add synonyms checked by accounting identities.
 - **Scale:** three tickers, ~4,400 chunks, exact scan; company cards need hand-written example questions (`COMPANIES` in `index.html`); multi-class issuers need `SPLIT_OVERRIDES`. Direction: vector index, cards and examples generated from the data, wider split detection.
 - **Evaluation:** 3 repeats per question; retrieval sets are small (22 + 8); the judge has 2 true `unsupported` labels, no held-out set, synthetic negatives for relevance; the judge has not run on the `fu-*` runs. Direction: grow the sets, label a held-out set that includes real errors, judge the multi-turn runs.
-- **Observability and hardening:** segment-ingest warnings are not persisted; `/agent/stream` has no auth, rate limit or `Last-Event-ID` resume. Direction: persist all ingest warnings; add auth, rate limiting and resume.
+- **Observability:** segment-ingest warnings are not persisted; `/agent/stream` has no `Last-Event-ID` resume. Direction: persist all ingest warnings; add resume.
 
 ## Working agreement
 
